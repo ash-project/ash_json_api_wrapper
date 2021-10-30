@@ -1,8 +1,8 @@
-defmodule AshApiWrapperTest do
+defmodule AshJsonApiWrapperTest do
   use ExUnit.Case
-  doctest AshApiWrapper
+  doctest AshJsonApiWrapper
 
   test "greets the world" do
-    assert AshApiWrapper.hello() == :world
+    assert AshJsonApiWrapper.hello() == :world
   end
 end
