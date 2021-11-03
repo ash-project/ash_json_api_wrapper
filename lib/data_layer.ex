@@ -27,9 +27,47 @@ defmodule AshJsonApiWrapper.DataLayer do
     Accepts overrides for fields as well.
     """,
     entities: [
-      fields: @field
+      fields: [@field]
     ],
     args: [:action]
+  }
+
+  @get_endpoint %Ash.Dsl.Entity{
+    name: :get_endpoint,
+    target: AshJsonApiWrapper.Endpoint,
+    schema: AshJsonApiWrapper.Endpoint.get_schema(),
+    docs: """
+    Configure the endpoint that a given action will use.
+
+    Accepts overrides for fields as well.
+
+    Expresses that this endpoint is used to fetch a single item.
+    Doing this will make the data layer support equality filters over that field when using that action.
+    If "in" or "or equals" is used, then multiple requests will be made in parallel to fetch
+    all of those records. However, keep in mind you can't combine a filter over one of these
+    fields with an `or` with anything other than *more* filters on this field. For example        Doing this will make the data layer support equality filters over that field.
+    If "in" or "or equals" is used, then multiple requests will be made in parallel to fetch
+    all of those records. However, keep in mind you can't combine a filter over one of these
+    fields with an `or` with anything other than *more* filters on this field. For example,
+    `filter(resource, id == 1 or foo == true)`, since we wouldn't be able to turn this into
+    multiple requests to the get endpoint for `id`. If other filters are supported, they can be used
+    with `and`, e.g `filter(resource, id == 1 or id == 2 and other_supported_filter == true)`, since those
+    filters will be applied to each request.
+
+    Expects the field to be available in the path template, e.g with `get_for :id`, path should contain `:id`, e.g
+    `/get/:id` or `/:id`,
+    `filter(resource, id == 1 or foo == true)`, since we wouldn't be able to turn this into
+    multiple requests to the get endpoint for `id`. If other filters are supported, they can be used
+    with `and`, e.g `filter(resource, id == 1 or id == 2 and other_supported_filter == true)`, since those
+    filters will be applied to each request.
+
+    Expects the field to be available in the path template, e.g with `get_for :id`, path should contain `:id`, e.g
+    `/get/:id` or `/:id`
+    """,
+    entities: [
+      fields: [@field]
+    ],
+    args: [:action, :get_for]
   }
 
   @endpoints %Ash.Dsl.Section{
@@ -42,7 +80,8 @@ defmodule AshJsonApiWrapper.DataLayer do
       ]
     ],
     entities: [
-      @endpoint
+      @endpoint,
+      @get_endpoint
     ]
   }
 
@@ -80,13 +119,26 @@ defmodule AshJsonApiWrapper.DataLayer do
   use Ash.Dsl.Extension, sections: [@json_api_wrapper]
 
   defmodule Query do
-    defstruct [:request, :action]
+    defstruct [
+      :request,
+      :action,
+      :limit,
+      :offset,
+      :filter,
+      :endpoint,
+      :templates,
+      :override_results
+    ]
   end
 
   @behaviour Ash.DataLayer
 
   @impl true
   def can?(_, :create), do: true
+  def can?(_, :boolean_filter), do: true
+  def can?(_, :filter), do: true
+  def can?(_, :limit), do: true
+  def can?(_, :offset), do: true
   def can?(_, _), do: false
 
   @impl true
@@ -95,14 +147,51 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   @impl true
+  def filter(query, filter, resource) do
+    IO.inspect(filter)
+
+    if query.action do
+      {filter, endpoint, templates} = validate_filter(query.filter, resource, query.action)
+      {:ok, %{query | filter: filter, endpoint: endpoint, templates: templates}}
+    else
+      {:ok, %{query | filter: filter}}
+    end
+  end
+
+  @impl true
   def set_context(_resource, query, context) do
     params = context[:data_layer][:query_params]
 
+    action = context[:action]
+
     if params do
-      {:ok, %{query | request: %{query.request | query: params}, action: context[:action]}}
+      {:ok,
+       %{
+         query
+         | request: %{query.request | query: params},
+           action: action
+       }}
     else
-      {:ok, %{query | action: context[:action]}}
+      {:ok, %{query | action: action}}
     end
+  end
+
+  defp validate_filter(filter, resource, action) when filter in [nil, true] do
+    {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}
+  end
+
+  defp validate_filter(filter, resource, action) do
+    {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}
+  end
+
+  @impl true
+  def limit(query, limit, _resource) do
+    {:ok, %{query | limit: limit}}
+  end
+
+  @impl true
+  def offset(query, offset, _resource) do
+    {:ok, %{query | offset: offset}}
   end
 
   @impl true
@@ -110,7 +199,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     endpoint = AshJsonApiWrapper.endpoint(resource, changeset.action.name)
 
     base =
-      case endpoint && endpoint.fields_in do
+      case endpoint.fields_in || :body do
         :body ->
           changeset.context[:data_layer][:body] || %{}
 
@@ -166,16 +255,29 @@ defmodule AshJsonApiWrapper.DataLayer do
           {with_attrs, changeset.context[:data_layer][:query_params] || %{}}
       end
 
-    :post
-    |> Finch.build(
-      endpoint.path || AshJsonApiWrapper.endpoint_base(resource),
-      [{"Content-Type", "application/json"}, {"Accept", "application/json"}],
-      body
-    )
-    |> Map.put(:query, params)
-    |> request(resource)
+    request =
+      :post
+      |> Finch.build(
+        endpoint.path || AshJsonApiWrapper.endpoint_base(resource),
+        [{"Content-Type", "application/json"}, {"Accept", "application/json"}],
+        body
+      )
+      |> Map.put(:query, params)
 
-    {:ok, struct(resource, [])}
+    with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
+           request(request, resource),
+         {:ok, body} <- Jason.decode(response.body),
+         {:ok, entities} <- get_entities(body, endpoint),
+         {:ok, processed} <- process_entities(entities, resource) do
+      {:ok, Enum.at(processed, 0)}
+    else
+      {:ok, %{status: status} = response} ->
+        {:error,
+         "Received status code #{status} in request #{inspect(request)}. Response: #{inspect(response)}"}
+
+      other ->
+        other
+    end
   end
 
   defp put_in!(body, [key], value) do
@@ -189,14 +291,20 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   @impl true
+  def run_query(%{override_results: results}, _resource) when not is_nil(results) do
+    {:ok, results}
+  end
+
   def run_query(query, resource) do
-    endpoint = AshJsonApiWrapper.endpoint(resource, query.action.name)
+    endpoint = query.endpoint || AshJsonApiWrapper.endpoint(resource, query.action.name)
 
     with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
            request(query.request, resource),
          {:ok, body} <- Jason.decode(response.body),
          {:ok, entities} <- get_entities(body, endpoint) do
-      process_entities(entities, resource)
+      entities
+      |> limit_offset(query)
+      |> process_entities(resource)
     else
       {:ok, %{status: status} = response} ->
         {:error,
@@ -207,13 +315,27 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
+  defp limit_offset(results, %Query{limit: limit, offset: offset}) do
+    results =
+      if offset do
+        Enum.drop(results, offset)
+      else
+        results
+      end
+
+    if limit do
+      Enum.take(results, limit)
+    else
+      results
+    end
+  end
+
   defp request(request, resource) do
     case AshJsonApiWrapper.before_request(resource) do
       nil ->
         request
         |> encode_query()
         |> encode_body()
-        |> IO.inspect()
         |> Finch.request(AshJsonApiWrapper.finch(resource))
 
       hook ->
@@ -221,10 +343,8 @@ defmodule AshJsonApiWrapper.DataLayer do
         |> hook.()
         |> encode_query()
         |> encode_body()
-        |> IO.inspect()
         |> Finch.request(AshJsonApiWrapper.finch(resource))
     end
-    |> IO.inspect()
   end
 
   defp encode_query(%{query: query} = request) when is_map(query) do

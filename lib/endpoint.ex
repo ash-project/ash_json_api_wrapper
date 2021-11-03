@@ -32,6 +32,20 @@ defmodule AshJsonApiWrapper.Endpoint do
     ]
   end
 
+  def get_schema do
+    Keyword.merge(
+      schema(),
+      get_for: [
+        type: :atom,
+        doc: """
+        Signifies that this endpoint is a get endpoint for a given field.
+
+        See the docs of `get_endpoint` for more.
+        """
+      ]
+    )
+  end
+
   def default(path) do
     %__MODULE__{
       path: path,

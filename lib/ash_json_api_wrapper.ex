@@ -14,7 +14,7 @@ defmodule AshJsonApiWrapper do
     Extension.get_opt(resource, [:json_api_wrapper], :finch, nil, false)
   end
 
-  @spec before_request(Ash.Resource.t()) :: module | nil
+  @spec before_request(Ash.Resource.t()) :: (Finch.Request.t() -> Finch.Request.t()) | nil
   def before_request(resource) do
     Extension.get_opt(resource, [:json_api_wrapper], :before_request, nil, false)
   end
@@ -41,6 +41,7 @@ defmodule AshJsonApiWrapper do
     |> case do
       nil ->
         default_endpoint
+
       endpoint ->
         if default_endpoint.path && endpoint.path do
           %{endpoint | path: default_endpoint.path <> endpoint.path}
