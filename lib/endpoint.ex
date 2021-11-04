@@ -1,5 +1,5 @@
 defmodule AshJsonApiWrapper.Endpoint do
-  defstruct [:action, :path, :entity_path, :fields, :fields_in, :write_entity_path]
+  defstruct [:action, :path, :entity_path, :fields, :fields_in, :write_entity_path, :get_for]
 
   @type t :: %__MODULE__{}
 

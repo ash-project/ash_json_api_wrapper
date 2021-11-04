@@ -37,10 +37,33 @@ defmodule AshJsonApiWrapper do
 
     resource
     |> Extension.get_entities([:json_api_wrapper, :endpoints])
+    |> Enum.reject(& &1.get_for)
     |> Enum.find(&(&1.action == action))
     |> case do
       nil ->
         default_endpoint
+
+      endpoint ->
+        if default_endpoint.path && endpoint.path do
+          %{endpoint | path: default_endpoint.path <> endpoint.path}
+        else
+          %{endpoint | path: endpoint.path || default_endpoint.path}
+        end
+    end
+  end
+
+  @spec get_endpoint(Ash.Resource.t(), atom, atom) :: AshJsonApiWrapper.Endpoint.t() | nil
+  def get_endpoint(resource, action, get_for) do
+    default_endpoint = AshJsonApiWrapper.Endpoint.default(endpoint_base(resource))
+
+    resource
+    |> Extension.get_entities([:json_api_wrapper, :endpoints])
+    |> Enum.find(fn endpoint ->
+      endpoint.action == action && endpoint.get_for == get_for
+    end)
+    |> case do
+      nil ->
+        nil
 
       endpoint ->
         if default_endpoint.path && endpoint.path do

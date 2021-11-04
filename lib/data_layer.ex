@@ -116,6 +116,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     ]
   }
 
+  require Logger
   use Ash.Dsl.Extension, sections: [@json_api_wrapper]
 
   defmodule Query do
@@ -139,6 +140,28 @@ defmodule AshJsonApiWrapper.DataLayer do
   def can?(_, :filter), do: true
   def can?(_, :limit), do: true
   def can?(_, :offset), do: true
+
+  def can?(
+        _,
+        {:filter_expr,
+         %Ash.Query.Operator.Eq{
+           left: %Ash.Query.Operator.Eq{left: %Ash.Query.Ref{}, right: %Ash.Query.Ref{}}
+         }}
+      ),
+      do: false
+
+  def can?(
+        _,
+        {:filter_expr, %Ash.Query.Operator.Eq{right: %Ash.Query.Ref{}}}
+      ),
+      do: true
+
+  def can?(
+        _,
+        {:filter_expr, %Ash.Query.Operator.Eq{left: %Ash.Query.Ref{}}}
+      ),
+      do: true
+
   def can?(_, _), do: false
 
   @impl true
@@ -148,11 +171,14 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   @impl true
   def filter(query, filter, resource) do
-    IO.inspect(filter)
-
     if query.action do
-      {filter, endpoint, templates} = validate_filter(query.filter, resource, query.action)
-      {:ok, %{query | filter: filter, endpoint: endpoint, templates: templates}}
+      case validate_filter(filter, resource, query.action) do
+        {:ok, {filter, endpoint, templates}} ->
+          {:ok, %{query | filter: filter, endpoint: endpoint, templates: templates}}
+
+        {:error, error} ->
+          {:error, error}
+      end
     else
       {:ok, %{query | filter: filter}}
     end
@@ -177,11 +203,178 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp validate_filter(filter, resource, action) when filter in [nil, true] do
-    {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}
+    {:ok, {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}}
   end
 
   defp validate_filter(filter, resource, action) do
-    {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}
+    case find_filter_that_uses_get_endpoint(filter, resource, action) do
+      {:ok, {remaining_filter, get_endpoint, templates}} ->
+        {:ok, {remaining_filter, get_endpoint, templates}}
+
+      {:ok, nil} ->
+        {:ok, {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp find_filter_that_uses_get_endpoint(
+         expr,
+         resource,
+         action,
+         templates \\ [],
+         in_an_or? \\ false,
+         uses_endpoint \\ nil
+       )
+
+  defp find_filter_that_uses_get_endpoint(
+         %Ash.Filter{expression: expression},
+         resource,
+         action,
+         templates,
+         in_an_or?,
+         uses_endpoint
+       ) do
+    find_filter_that_uses_get_endpoint(
+      expression,
+      resource,
+      action,
+      templates,
+      in_an_or?,
+      uses_endpoint
+    )
+  end
+
+  defp find_filter_that_uses_get_endpoint(
+         %Ash.Query.BooleanExpression{op: :and, left: left, right: right},
+         resource,
+         action,
+         templates,
+         in_an_or?,
+         uses_endpoint
+       ) do
+    case find_filter_that_uses_get_endpoint(left, resource, action, templates, in_an_or?) do
+      {:ok, {left_remaining, get_endpoint, left_templates}} ->
+        if uses_endpoint && get_endpoint != uses_endpoint do
+          {:error,
+           "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
+        else
+          case find_filter_that_uses_get_endpoint(right, resource, action, templates, in_an_or?) do
+            {:ok, {right_remaining, get_endpoint, right_templates}} ->
+              if uses_endpoint && get_endpoint != uses_endpoint do
+                {:error,
+                 "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
+              else
+                {:ok,
+                 {Ash.Query.BooleanExpression.new(:and, left_remaining, right_remaining),
+                  uses_endpoint, left_templates ++ right_templates ++ templates}}
+              end
+          end
+        end
+
+      {:ok, nil} ->
+        case find_filter_that_uses_get_endpoint(right, resource, action, templates, in_an_or?) do
+          {:ok, {right_remaining, get_endpoint, right_templates}} ->
+            if uses_endpoint && get_endpoint != uses_endpoint do
+              {:error,
+               "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
+            else
+              {:ok, {right_remaining, uses_endpoint, right_templates ++ templates}}
+            end
+        end
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp find_filter_that_uses_get_endpoint(
+         %Ash.Query.BooleanExpression{op: :or, left: left, right: right} = expr,
+         resource,
+         action,
+         templates,
+         _in_an_or?,
+         uses_endpoint
+       ) do
+    case find_filter_that_uses_get_endpoint(left, resource, action, templates, true) do
+      {:ok, nil} ->
+        case find_filter_that_uses_get_endpoint(right, resource, action, templates, true) do
+          {:ok, nil} ->
+            {:ok, {expr, uses_endpoint, []}}
+
+          {:error, error} ->
+            {:error, error}
+        end
+
+      {:error, error} ->
+        {:error, error}
+
+      _ ->
+        raise "Unreachable!"
+    end
+  end
+
+  defp find_filter_that_uses_get_endpoint(
+         %Ash.Query.Operator.Eq{left: %Ash.Query.Ref{}, right: %Ash.Query.Ref{}},
+         _,
+         _,
+         _,
+         _,
+         _
+       ) do
+    {:error,
+     "References on both sides of operators not supported in ash_json_api_wrapper currently"}
+  end
+
+  defp find_filter_that_uses_get_endpoint(
+         %Ash.Query.Operator.Eq{
+           left: left,
+           right: %Ash.Query.Ref{} = right
+         } = op,
+         resource,
+         action,
+         templates,
+         in_an_or?,
+         uses_endpoint
+       ) do
+    find_filter_that_uses_get_endpoint(
+      %{op | right: left, left: right},
+      resource,
+      action,
+      templates,
+      in_an_or?,
+      uses_endpoint
+    )
+  end
+
+  defp find_filter_that_uses_get_endpoint(
+         %Ash.Query.Operator.Eq{
+           left: %Ash.Query.Ref{relationship_path: [], attribute: attribute},
+           right: value
+         },
+         resource,
+         action,
+         templates,
+         in_an_or?,
+         uses_endpoint
+       ) do
+    case AshJsonApiWrapper.get_endpoint(resource, action.name, attribute.name) do
+      nil ->
+        {:ok, nil}
+
+      get_endpoint ->
+        if in_an_or? do
+          {:error, "Cannot use get_endpoint attributes in an `or` clause of a filter."}
+        else
+          if uses_endpoint && get_endpoint != uses_endpoint do
+            {:error,
+             "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
+          else
+            {:ok, {nil, get_endpoint, [{attribute.name, value} | templates]}}
+          end
+        end
+    end
   end
 
   @impl true
@@ -296,23 +489,60 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   def run_query(query, resource) do
-    endpoint = query.endpoint || AshJsonApiWrapper.endpoint(resource, query.action.name)
+    if query.templates do
+      query.templates
+      |> Task.async_stream(
+        fn template ->
+          query = %{
+            query
+            | request: Finch.build(:get, fill_template(query.endpoint.path, template)),
+              templates: nil
+          }
 
-    with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-           request(query.request, resource),
-         {:ok, body} <- Jason.decode(response.body),
-         {:ok, entities} <- get_entities(body, endpoint) do
-      entities
-      |> limit_offset(query)
-      |> process_entities(resource)
+          run_query(query, resource)
+        end,
+        timeout: :infinity
+      )
+      |> Enum.reduce_while(
+        {:ok, []},
+        fn
+          {:ok, {:ok, results}}, {:ok, all_results} ->
+            {:cont, {:ok, results ++ all_results}}
+
+          {:ok, {:error, error}}, _ ->
+            {:halt, {:error, error}}
+
+          {:exit, reason}, _ ->
+            {:error, "Request process exited with #{inspect(reason)}"}
+        end
+      )
     else
-      {:ok, %{status: status} = response} ->
-        {:error,
-         "Received status code #{status} in request #{inspect(query.request)}. Response: #{inspect(response)}"}
+      endpoint = query.endpoint || AshJsonApiWrapper.endpoint(resource, query.action.name)
 
-      other ->
-        other
+      with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
+             request(query.request, resource),
+           {:ok, body} <- Jason.decode(response.body),
+           {:ok, entities} <- get_entities(body, endpoint) do
+        entities
+        |> limit_offset(query)
+        |> process_entities(resource)
+      else
+        {:ok, %{status: status} = response} ->
+          {:error,
+           "Received status code #{status} in request #{inspect(query.request)}. Response: #{inspect(response)}"}
+
+        other ->
+          other
+      end
     end
+  end
+
+  defp fill_template(string, template) do
+    template
+    |> List.wrap()
+    |> Enum.reduce(string, fn {key, replacement}, acc ->
+      String.replace(acc, ":#{key}", replacement)
+    end)
   end
 
   defp limit_offset(results, %Query{limit: limit, offset: offset}) do
@@ -336,15 +566,29 @@ defmodule AshJsonApiWrapper.DataLayer do
         request
         |> encode_query()
         |> encode_body()
+        |> log_send()
         |> Finch.request(AshJsonApiWrapper.finch(resource))
+        |> log_resp()
 
       hook ->
         request
         |> hook.()
         |> encode_query()
         |> encode_body()
+        |> log_send()
         |> Finch.request(AshJsonApiWrapper.finch(resource))
+        |> log_resp()
     end
+  end
+
+  defp log_send(request) do
+    Logger.debug("Sending request: #{inspect(request)}")
+    request
+  end
+
+  defp log_resp(response) do
+    Logger.debug("Received response: #{inspect(response)}")
+    response
   end
 
   defp encode_query(%{query: query} = request) when is_map(query) do
