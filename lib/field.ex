@@ -1,5 +1,5 @@
 defmodule AshJsonApiWrapper.Field do
-  defstruct [:name, :path, :write_path]
+  defstruct [:name, :path, :write_path, :filter_handler]
 
   @type t :: %__MODULE__{}
 
@@ -17,6 +17,16 @@ defmodule AshJsonApiWrapper.Field do
       write_path: [
         type: {:list, :string},
         doc: "The list path of the value for this field when writing."
+      ],
+      filter_handler: [
+        type: :any,
+        doc: """
+        Specification for how the field is handled when used in filters. This is relatively limited at the moment.
+
+        Supports the following:
+        * `:simple` - Sets the value directly into the query params. Does not support `or equals` or `in` filters.
+        * `{:place_in_list, ["path", "to", "list"]}` - Supports `or equals` and `in` filters over the given field, by placing their values in the provided list.
+        """
       ]
     ]
   end

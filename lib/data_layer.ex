@@ -162,6 +162,24 @@ defmodule AshJsonApiWrapper.DataLayer do
       ),
       do: true
 
+  def can?(
+        _,
+        {:filter_expr, %Ash.Query.Operator.In{right: %Ash.Query.Ref{}}}
+      ),
+      do: false
+
+  def can?(
+        _,
+        {:filter_expr, %Ash.Query.Operator.In{left: %Ash.Query.Ref{}, right: %Ash.Query.Ref{}}}
+      ),
+      do: false
+
+  def can?(
+        _,
+        {:filter_expr, %Ash.Query.Operator.In{left: %Ash.Query.Ref{}}}
+      ),
+      do: true
+
   def can?(_, _), do: false
 
   @impl true
@@ -171,16 +189,39 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   @impl true
   def filter(query, filter, resource) do
-    if query.action do
-      case validate_filter(filter, resource, query.action) do
-        {:ok, {filter, endpoint, templates}} ->
-          {:ok, %{query | filter: filter, endpoint: endpoint, templates: templates}}
-
-        {:error, error} ->
-          {:error, error}
-      end
+    if filter == false || match?(%Ash.Filter{expression: false}, filter) do
+      %{query | override_results: []}
     else
-      {:ok, %{query | filter: filter}}
+      if filter == nil || filter == true || match?(%Ash.Filter{expression: nil}, filter) do
+        {:ok, %{query | filter: filter}}
+      else
+        if query.action do
+          case validate_filter(filter, resource, query.action) do
+            {:ok, {endpoint, templates, instructions}} ->
+              new_query_params =
+                Enum.reduce(instructions, query.request.query || %{}, fn
+                  {:simple, field, value}, query ->
+                    Map.put(query, to_string(field), value)
+
+                  {:place_in_list, path, value}, query ->
+                    update_in!(query, path, [], &[value | &1])
+                end)
+
+              {:ok,
+               %{
+                 query
+                 | endpoint: endpoint,
+                   templates: templates,
+                   request: %{query.request | query: new_query_params}
+               }}
+
+            {:error, error} ->
+              {:error, error}
+          end
+        else
+          {:ok, %{query | filter: filter}}
+        end
+      end
     end
   end
 
@@ -203,105 +244,26 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp validate_filter(filter, resource, action) when filter in [nil, true] do
-    {:ok, {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}}
+    {:ok, {AshJsonApiWrapper.endpoint(resource, action.name), nil, []}}
   end
 
   defp validate_filter(filter, resource, action) do
-    case find_filter_that_uses_get_endpoint(filter, resource, action) do
+    case AshJsonApiWrapper.Filter.find_filter_that_uses_get_endpoint(filter, resource, action) do
       {:ok, {remaining_filter, get_endpoint, templates}} ->
-        {:ok, {remaining_filter, get_endpoint, templates}}
+        case filter_instructions(remaining_filter, resource, get_endpoint) do
+          {:ok, instructions} ->
+            {:ok, {get_endpoint, templates, instructions}}
 
-      {:ok, nil} ->
-        {:ok, {nil, AshJsonApiWrapper.endpoint(resource, action.name), []}}
-
-      {:error, error} ->
-        {:error, error}
-    end
-  end
-
-  defp find_filter_that_uses_get_endpoint(
-         expr,
-         resource,
-         action,
-         templates \\ [],
-         in_an_or? \\ false,
-         uses_endpoint \\ nil
-       )
-
-  defp find_filter_that_uses_get_endpoint(
-         %Ash.Filter{expression: expression},
-         resource,
-         action,
-         templates,
-         in_an_or?,
-         uses_endpoint
-       ) do
-    find_filter_that_uses_get_endpoint(
-      expression,
-      resource,
-      action,
-      templates,
-      in_an_or?,
-      uses_endpoint
-    )
-  end
-
-  defp find_filter_that_uses_get_endpoint(
-         %Ash.Query.BooleanExpression{op: :and, left: left, right: right},
-         resource,
-         action,
-         templates,
-         in_an_or?,
-         uses_endpoint
-       ) do
-    case find_filter_that_uses_get_endpoint(left, resource, action, templates, in_an_or?) do
-      {:ok, {left_remaining, get_endpoint, left_templates}} ->
-        if uses_endpoint && get_endpoint != uses_endpoint do
-          {:error,
-           "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
-        else
-          case find_filter_that_uses_get_endpoint(right, resource, action, templates, in_an_or?) do
-            {:ok, {right_remaining, get_endpoint, right_templates}} ->
-              if uses_endpoint && get_endpoint != uses_endpoint do
-                {:error,
-                 "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
-              else
-                {:ok,
-                 {Ash.Query.BooleanExpression.new(:and, left_remaining, right_remaining),
-                  uses_endpoint, left_templates ++ right_templates ++ templates}}
-              end
-          end
+          {:error, error} ->
+            {:error, error}
         end
 
       {:ok, nil} ->
-        case find_filter_that_uses_get_endpoint(right, resource, action, templates, in_an_or?) do
-          {:ok, {right_remaining, get_endpoint, right_templates}} ->
-            if uses_endpoint && get_endpoint != uses_endpoint do
-              {:error,
-               "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
-            else
-              {:ok, {right_remaining, uses_endpoint, right_templates ++ templates}}
-            end
-        end
+        endpoint = AshJsonApiWrapper.endpoint(resource, action.name)
 
-      {:error, error} ->
-        {:error, error}
-    end
-  end
-
-  defp find_filter_that_uses_get_endpoint(
-         %Ash.Query.BooleanExpression{op: :or, left: left, right: right} = expr,
-         resource,
-         action,
-         templates,
-         _in_an_or?,
-         uses_endpoint
-       ) do
-    case find_filter_that_uses_get_endpoint(left, resource, action, templates, true) do
-      {:ok, nil} ->
-        case find_filter_that_uses_get_endpoint(right, resource, action, templates, true) do
-          {:ok, nil} ->
-            {:ok, {expr, uses_endpoint, []}}
+        case filter_instructions(filter, resource, endpoint) do
+          {:ok, instructions} ->
+            {:ok, {endpoint, nil, instructions}}
 
           {:error, error} ->
             {:error, error}
@@ -309,71 +271,58 @@ defmodule AshJsonApiWrapper.DataLayer do
 
       {:error, error} ->
         {:error, error}
-
-      _ ->
-        raise "Unreachable!"
     end
   end
 
-  defp find_filter_that_uses_get_endpoint(
-         %Ash.Query.Operator.Eq{left: %Ash.Query.Ref{}, right: %Ash.Query.Ref{}},
-         _,
-         _,
-         _,
-         _,
-         _
-       ) do
-    {:error,
-     "References on both sides of operators not supported in ash_json_api_wrapper currently"}
-  end
+  defp filter_instructions(filter, resource, endpoint) do
+    base_fields =
+      resource
+      |> AshJsonApiWrapper.fields()
+      |> Map.new(&{&1.name, &1})
 
-  defp find_filter_that_uses_get_endpoint(
-         %Ash.Query.Operator.Eq{
-           left: left,
-           right: %Ash.Query.Ref{} = right
-         } = op,
-         resource,
-         action,
-         templates,
-         in_an_or?,
-         uses_endpoint
-       ) do
-    find_filter_that_uses_get_endpoint(
-      %{op | right: left, left: right},
-      resource,
-      action,
-      templates,
-      in_an_or?,
-      uses_endpoint
-    )
-  end
+    fields =
+      endpoint.fields
+      |> Enum.reduce(base_fields, fn field, acc ->
+        Map.put(acc, field.name, field)
+      end)
+      |> Map.values()
+      |> Enum.filter(& &1.filter_handler)
 
-  defp find_filter_that_uses_get_endpoint(
-         %Ash.Query.Operator.Eq{
-           left: %Ash.Query.Ref{relationship_path: [], attribute: attribute},
-           right: value
-         },
-         resource,
-         action,
-         templates,
-         in_an_or?,
-         uses_endpoint
-       ) do
-    case AshJsonApiWrapper.get_endpoint(resource, action.name, attribute.name) do
-      nil ->
-        {:ok, nil}
+    Enum.reduce_while(fields, {:ok, [], filter}, fn field, {:ok, instructions, filter} ->
+      result =
+        case field.filter_handler do
+          :simple ->
+            AshJsonApiWrapper.Filter.find_simple_filter(filter, field)
 
-      get_endpoint ->
-        if in_an_or? do
-          {:error, "Cannot use get_endpoint attributes in an `or` clause of a filter."}
-        else
-          if uses_endpoint && get_endpoint != uses_endpoint do
-            {:error,
-             "Filter would cause the usage of different endpoints: #{inspect(uses_endpoint)} and #{inspect(get_endpoint)}"}
-          else
-            {:ok, {nil, get_endpoint, [{attribute.name, value} | templates]}}
-          end
+          {:place_in_list, path} ->
+            AshJsonApiWrapper.Filter.find_place_in_list_filter(
+              filter,
+              field.name,
+              path
+            )
         end
+
+      case result do
+        {:ok, nil} ->
+          {:cont, {:ok, instructions, filter}}
+
+        {:ok, {remaining_filter, new_instructions}} ->
+          {:cont, {:ok, new_instructions ++ instructions, remaining_filter}}
+
+        {:error, error} ->
+          {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, instructions, nil} ->
+        {:ok, instructions}
+
+      {:ok, _instructions, remaining_filter} ->
+        {:error,
+         "Some part of the provided filter statement was not processes: #{inspect(remaining_filter)}"}
+
+      {:error, error} ->
+        {:error, error}
     end
   end
 
@@ -461,7 +410,7 @@ defmodule AshJsonApiWrapper.DataLayer do
            request(request, resource),
          {:ok, body} <- Jason.decode(response.body),
          {:ok, entities} <- get_entities(body, endpoint),
-         {:ok, processed} <- process_entities(entities, resource) do
+         {:ok, processed} <- process_entities(entities, resource, endpoint) do
       {:ok, Enum.at(processed, 0)}
     else
       {:ok, %{status: status} = response} ->
@@ -474,13 +423,26 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp put_in!(body, [key], value) do
-    Map.put(body, key, value)
+    Map.put(body || %{}, key, value)
   end
 
   defp put_in!(body, [first | rest], value) do
     body
     |> Map.put_new(first, %{})
     |> Map.update!(first, &put_in!(&1, rest, value))
+  end
+
+  defp update_in!(body, [key], default, func) do
+    body
+    |> Kernel.||(%{})
+    |> Map.put_new(key, default)
+    |> Map.update!(key, func)
+  end
+
+  defp update_in!(body, [first | rest], default, func) do
+    body
+    |> Map.put_new(first, %{})
+    |> Map.update!(first, &update_in!(&1, rest, default, func))
   end
 
   @impl true
@@ -525,7 +487,7 @@ defmodule AshJsonApiWrapper.DataLayer do
            {:ok, entities} <- get_entities(body, endpoint) do
         entities
         |> limit_offset(query)
-        |> process_entities(resource)
+        |> process_entities(resource, endpoint)
       else
         {:ok, %{status: status} = response} ->
           {:error,
@@ -592,10 +554,44 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp encode_query(%{query: query} = request) when is_map(query) do
-    %{request | query: URI.encode_query(query)}
+    %{request | query: do_encode_query(query)}
   end
 
   defp encode_query(request), do: request
+
+  defp do_encode_query(query) do
+    query
+    |> sanitize_for_encoding()
+    |> URI.encode_query()
+  end
+
+  defp sanitize_for_encoding(value, acc \\ %{}, prefix \\ nil)
+
+  defp sanitize_for_encoding(value, acc, prefix) when is_map(value) do
+    value
+    |> Enum.reduce(acc, fn {key, value}, acc ->
+      new_prefix =
+        if prefix do
+          prefix <> "[#{key}]"
+        else
+          to_string(key)
+        end
+
+      sanitize_for_encoding(value, acc, new_prefix)
+    end)
+  end
+
+  defp sanitize_for_encoding(value, acc, prefix) when is_list(value) do
+    value
+    |> Enum.with_index()
+    |> Map.new(fn {value, index} ->
+      {to_string(index), sanitize_for_encoding(value)}
+    end)
+    |> sanitize_for_encoding(acc, prefix)
+  end
+
+  defp sanitize_for_encoding(value, _acc, nil), do: value
+  defp sanitize_for_encoding(value, acc, prefix), do: Map.put(acc, prefix, value)
 
   defp encode_body(%{body: body} = request) when is_map(body) do
     %{request | body: Jason.encode!(body)}
@@ -603,9 +599,9 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defp encode_body(request), do: request
 
-  defp process_entities(entities, resource) do
+  defp process_entities(entities, resource, endpoint) do
     Enum.reduce_while(entities, {:ok, []}, fn entity, {:ok, entities} ->
-      case process_entity(entity, resource) do
+      case process_entity(entity, resource, endpoint) do
         {:ok, entity} -> {:cont, {:ok, [entity | entities]}}
         {:error, error} -> {:halt, {:error, error}}
       end
@@ -616,7 +612,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp process_entity(entity, resource) do
+  defp process_entity(entity, resource, endpoint) do
     resource
     |> Ash.Resource.Info.attributes()
     |> Enum.reduce_while(
@@ -627,7 +623,7 @@ defmodule AshJsonApiWrapper.DataLayer do
          }
        )},
       fn attr, {:ok, record} ->
-        case get_field(entity, attr, resource) do
+        case get_field(entity, attr, resource, endpoint) do
           {:ok, value} ->
             {:cont, {:ok, Map.put(record, attr.name, value)}}
 
@@ -638,8 +634,8 @@ defmodule AshJsonApiWrapper.DataLayer do
     )
   end
 
-  defp get_field(entity, attr, resource) do
-    raw_value = get_raw_value(entity, attr, resource)
+  defp get_field(entity, attr, resource, endpoint) do
+    raw_value = get_raw_value(entity, attr, resource, endpoint)
 
     case Ash.Type.cast_stored(attr.type, raw_value, attr.constraints) do
       {:ok, value} ->
@@ -651,8 +647,8 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp get_raw_value(entity, attr, resource) do
-    case Enum.find(AshJsonApiWrapper.fields(resource), &(&1.name == attr.name)) do
+  defp get_raw_value(entity, attr, resource, endpoint) do
+    case get_field(resource, endpoint, attr.name) do
       %{path: path} when not is_nil(path) ->
         case ExJSONPath.eval(entity, path) do
           {:ok, [value | _]} ->
@@ -684,5 +680,10 @@ defmodule AshJsonApiWrapper.DataLayer do
             {:error, error}
         end
     end
+  end
+
+  defp get_field(resource, endpoint, field) do
+    Enum.find(endpoint.fields, &(&1.name == field)) ||
+      Enum.find(AshJsonApiWrapper.fields(resource), &(&1.name == field))
   end
 end
