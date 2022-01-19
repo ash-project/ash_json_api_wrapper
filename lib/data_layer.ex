@@ -683,7 +683,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp get_field(resource, endpoint, field) do
-    Enum.find(endpoint.fields, &(&1.name == field)) ||
+    Enum.find(endpoint.fields || [], &(&1.name == field)) ||
       Enum.find(AshJsonApiWrapper.fields(resource), &(&1.name == field))
   end
 end
