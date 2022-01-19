@@ -92,6 +92,8 @@ defmodule AshJsonApiWrapper.Filter do
         context \\ %{in_an_or?: false, other_branch_instructions: nil}
       )
 
+  def find_place_in_list_filter(nil, _, _, _), do: {:ok, nil}
+
   def find_place_in_list_filter(%Ash.Filter{expression: expression}, field, path, context) do
     find_place_in_list_filter(expression, field, path, context)
   end
