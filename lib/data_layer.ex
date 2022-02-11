@@ -126,6 +126,7 @@ defmodule AshJsonApiWrapper.DataLayer do
       :limit,
       :offset,
       :filter,
+      :sort,
       :endpoint,
       :templates,
       :override_results
@@ -180,6 +181,8 @@ defmodule AshJsonApiWrapper.DataLayer do
       ),
       do: true
 
+  def can?(_, :sort), do: true
+  def can?(_, {:sort, _}), do: true
   def can?(_, _), do: false
 
   @impl true
@@ -222,6 +225,21 @@ defmodule AshJsonApiWrapper.DataLayer do
           {:ok, %{query | filter: filter}}
         end
       end
+    end
+  end
+
+  @impl true
+  def sort(query, sort, _resource) when sort in [nil, []] do
+    {:ok, query}
+  end
+
+  def sort(query, sort, _resource) do
+    endpoint = query.endpoint
+
+    if endpoint.runtime_sort? do
+      {:ok, %{query | sort: sort}}
+    else
+      {:error, "Sorting is not supported"}
     end
   end
 
@@ -446,8 +464,8 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   @impl true
-  def run_query(%{override_results: results}, _resource) when not is_nil(results) do
-    {:ok, results}
+  def run_query(%{override_results: results} = query, _resource) when not is_nil(results) do
+    do_sort({:ok, results}, query)
   end
 
   def run_query(query, resource) do
@@ -497,7 +515,14 @@ defmodule AshJsonApiWrapper.DataLayer do
           other
       end
     end
+    |> do_sort(query)
   end
+
+  defp do_sort({:ok, results}, %{sort: sort}) when sort not in [nil, []] do
+    Ash.Sort.runtime_sort(results, sort)
+  end
+
+  defp do_sort(other, _), do: other
 
   defp fill_template(string, template) do
     template

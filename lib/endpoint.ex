@@ -1,5 +1,14 @@
 defmodule AshJsonApiWrapper.Endpoint do
-  defstruct [:action, :path, :entity_path, :fields, :fields_in, :write_entity_path, :get_for]
+  defstruct [
+    :action,
+    :path,
+    :entity_path,
+    :fields,
+    :fields_in,
+    :write_entity_path,
+    :get_for,
+    :runtime_sort?
+  ]
 
   @type t :: %__MODULE__{}
 
@@ -28,6 +37,12 @@ defmodule AshJsonApiWrapper.Endpoint do
       entity_path: [
         type: :string,
         doc: "A json path at which the entities can be read back from the response"
+      ],
+      runtime_sort?: [
+        type: :boolean,
+        default: false,
+        doc:
+          "Whether or not this endpoint should support sorting at runtime after the data has been received."
       ]
     ]
   end
