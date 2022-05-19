@@ -54,14 +54,14 @@ defmodule AshJsonApiWrapper.DataLayer do
     with `and`, e.g `filter(resource, id == 1 or id == 2 and other_supported_filter == true)`, since those
     filters will be applied to each request.
 
-    Expects the field to be available in the path template, e.g with `get_for :id`, path should contain `:id`, e.g
+    Expects the field to be available in the path template, e.g with `get_for` of `:id`, path should contain `:id`, e.g
     `/get/:id` or `/:id`,
     `filter(resource, id == 1 or foo == true)`, since we wouldn't be able to turn this into
     multiple requests to the get endpoint for `id`. If other filters are supported, they can be used
     with `and`, e.g `filter(resource, id == 1 or id == 2 and other_supported_filter == true)`, since those
     filters will be applied to each request.
 
-    Expects the field to be available in the path template, e.g with `get_for :id`, path should contain `:id`, e.g
+    Expects the field to be available in the path template, e.g with `get_for` of `:id`, path should contain `:id`, e.g
     `/get/:id` or `/:id`
     """,
     entities: [
@@ -425,7 +425,7 @@ defmodule AshJsonApiWrapper.DataLayer do
       |> Map.put(:query, params)
 
     with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-           request(request, resource),
+           request(request, resource, endpoint.path),
          {:ok, body} <- Jason.decode(response.body),
          {:ok, entities} <- get_entities(body, endpoint),
          {:ok, processed} <- process_entities(entities, resource, endpoint) do
@@ -464,11 +464,14 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   @impl true
-  def run_query(%{override_results: results} = query, _resource) when not is_nil(results) do
+  def run_query(query, resource, overridden? \\ false)
+
+  def run_query(%{override_results: results} = query, _resource, _overriden)
+      when not is_nil(results) do
     do_sort({:ok, results}, query)
   end
 
-  def run_query(query, resource) do
+  def run_query(query, resource, overridden?) do
     if query.templates do
       query.templates
       |> Task.async_stream(
@@ -479,7 +482,7 @@ defmodule AshJsonApiWrapper.DataLayer do
               templates: nil
           }
 
-          run_query(query, resource)
+          run_query(query, resource, true)
         end,
         timeout: :infinity
       )
@@ -499,8 +502,15 @@ defmodule AshJsonApiWrapper.DataLayer do
     else
       endpoint = query.endpoint || AshJsonApiWrapper.endpoint(resource, query.action.name)
 
+      path =
+        if overridden? do
+          query.request.path
+        else
+          endpoint.path
+        end
+
       with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-             request(query.request, resource),
+             request(query.request, resource, path),
            {:ok, body} <- Jason.decode(response.body),
            {:ok, entities} <- get_entities(body, endpoint) do
         entities
@@ -528,7 +538,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     template
     |> List.wrap()
     |> Enum.reduce(string, fn {key, replacement}, acc ->
-      String.replace(acc, ":#{key}", replacement)
+      String.replace(acc, ":#{key}", to_string(replacement))
     end)
   end
 
@@ -547,10 +557,11 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp request(request, resource) do
+  defp request(request, resource, path) do
     case AshJsonApiWrapper.before_request(resource) do
       nil ->
         request
+        |> Map.put(:path, path)
         |> encode_query()
         |> encode_body()
         |> log_send()
@@ -559,6 +570,7 @@ defmodule AshJsonApiWrapper.DataLayer do
 
       hook ->
         request
+        |> Map.put(:path, path)
         |> hook.()
         |> encode_query()
         |> encode_body()
@@ -674,6 +686,9 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defp get_raw_value(entity, attr, resource, endpoint) do
     case get_field(resource, endpoint, attr.name) do
+      %{path: ""} ->
+        entity
+
       %{path: path} when not is_nil(path) ->
         case ExJSONPath.eval(entity, path) do
           {:ok, [value | _]} ->
