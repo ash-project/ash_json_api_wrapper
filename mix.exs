@@ -21,14 +21,14 @@ defmodule AshJsonApiWrapper.MixProject do
 
   defp aliases do
     [
-      "ash.formatter": "ash.formatter --extensions AshJsonApiWrapper.DataLayer"
+      "spark.formatter": "spark.formatter --extensions AshJsonApiWrapper.DataLayer"
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ash, "~> 1.52.0-rc.8"},
+      {:ash, "~> 2.0.0-rc.6"},
       {:finch, "~> 0.9.0"},
       {:exjsonpath, "~> 0.1"},
       # Dev/Test dependencies

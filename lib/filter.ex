@@ -367,7 +367,7 @@ defmodule AshJsonApiWrapper.Filter do
         in_an_or?,
         uses_endpoint
       ) do
-    case AshJsonApiWrapper.get_endpoint(resource, action.name, attribute.name) do
+    case AshJsonApiWrapper.DataLayer.Info.get_endpoint(resource, action.name, attribute.name) do
       nil ->
         {:ok, nil}
 
@@ -396,7 +396,7 @@ defmodule AshJsonApiWrapper.Filter do
         in_an_or?,
         uses_endpoint
       ) do
-    case AshJsonApiWrapper.get_endpoint(resource, action.name, attribute.name) do
+    case AshJsonApiWrapper.DataLayer.Info.get_endpoint(resource, action.name, attribute.name) do
       nil ->
         {:ok, nil}
 

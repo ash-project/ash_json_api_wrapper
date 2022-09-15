@@ -1,5 +1,5 @@
 defmodule AshJsonApiWrapper.DataLayer do
-  @field %Ash.Dsl.Entity{
+  @field %Spark.Dsl.Entity{
     name: :field,
     target: AshJsonApiWrapper.Field,
     schema: AshJsonApiWrapper.Field.schema(),
@@ -9,7 +9,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     args: [:name]
   }
 
-  @fields %Ash.Dsl.Section{
+  @fields %Spark.Dsl.Section{
     name: :fields,
     describe: "Contains configuration for individual fields in the response",
     entities: [
@@ -17,7 +17,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     ]
   }
 
-  @endpoint %Ash.Dsl.Entity{
+  @endpoint %Spark.Dsl.Entity{
     name: :endpoint,
     target: AshJsonApiWrapper.Endpoint,
     schema: AshJsonApiWrapper.Endpoint.schema(),
@@ -32,7 +32,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     args: [:action]
   }
 
-  @get_endpoint %Ash.Dsl.Entity{
+  @get_endpoint %Spark.Dsl.Entity{
     name: :get_endpoint,
     target: AshJsonApiWrapper.Endpoint,
     schema: AshJsonApiWrapper.Endpoint.get_schema(),
@@ -70,7 +70,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     args: [:action, :get_for]
   }
 
-  @endpoints %Ash.Dsl.Section{
+  @endpoints %Spark.Dsl.Section{
     name: :endpoints,
     describe: "Contains the configuration for the endpoints used in each action",
     schema: [
@@ -85,7 +85,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     ]
   }
 
-  @json_api_wrapper %Ash.Dsl.Section{
+  @json_api_wrapper %Spark.Dsl.Section{
     name: :json_api_wrapper,
     describe: "Contains the configuration for the json_api_wrapper data layer",
     sections: [
@@ -117,7 +117,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   }
 
   require Logger
-  use Ash.Dsl.Extension, sections: [@json_api_wrapper]
+  use Spark.Dsl.Extension, sections: [@json_api_wrapper]
 
   defmodule Query do
     defstruct [
@@ -187,7 +187,7 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   @impl true
   def resource_to_query(resource) do
-    %Query{request: Finch.build(:get, AshJsonApiWrapper.endpoint_base(resource))}
+    %Query{request: Finch.build(:get, AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource))}
   end
 
   @impl true
@@ -262,7 +262,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp validate_filter(filter, resource, action) when filter in [nil, true] do
-    {:ok, {AshJsonApiWrapper.endpoint(resource, action.name), nil, []}}
+    {:ok, {AshJsonApiWrapper.DataLayer.Info.endpoint(resource, action.name), nil, []}}
   end
 
   defp validate_filter(filter, resource, action) do
@@ -277,7 +277,7 @@ defmodule AshJsonApiWrapper.DataLayer do
         end
 
       {:ok, nil} ->
-        endpoint = AshJsonApiWrapper.endpoint(resource, action.name)
+        endpoint = AshJsonApiWrapper.DataLayer.Info.endpoint(resource, action.name)
 
         case filter_instructions(filter, resource, endpoint) do
           {:ok, instructions} ->
@@ -295,7 +295,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   defp filter_instructions(filter, resource, endpoint) do
     base_fields =
       resource
-      |> AshJsonApiWrapper.fields()
+      |> AshJsonApiWrapper.DataLayer.Info.fields()
       |> Map.new(&{&1.name, &1})
 
     fields =
@@ -356,7 +356,7 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   @impl true
   def create(resource, changeset) do
-    endpoint = AshJsonApiWrapper.endpoint(resource, changeset.action.name)
+    endpoint = AshJsonApiWrapper.DataLayer.Info.endpoint(resource, changeset.action.name)
 
     base =
       case endpoint.fields_in || :body do
@@ -372,7 +372,7 @@ defmodule AshJsonApiWrapper.DataLayer do
       |> Kernel.||(%{})
       |> Enum.reduce_while({:ok, base}, fn {key, value}, {:ok, acc} ->
         attribute = Ash.Resource.Info.attribute(resource, key)
-        field = AshJsonApiWrapper.field(resource, attribute.name)
+        field = AshJsonApiWrapper.DataLayer.Info.field(resource, attribute.name)
 
         case Ash.Type.dump_to_embedded(
                attribute.type,
@@ -418,7 +418,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     request =
       :post
       |> Finch.build(
-        endpoint.path || AshJsonApiWrapper.endpoint_base(resource),
+        endpoint.path || AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource),
         [{"Content-Type", "application/json"}, {"Accept", "application/json"}],
         body
       )
@@ -500,13 +500,38 @@ defmodule AshJsonApiWrapper.DataLayer do
         end
       )
     else
-      endpoint = query.endpoint || AshJsonApiWrapper.endpoint(resource, query.action.name)
+      endpoint =
+        query.endpoint || AshJsonApiWrapper.DataLayer.Info.endpoint(resource, query.action.name)
 
       path =
         if overridden? do
           query.request.path
         else
           endpoint.path
+        end
+
+      query =
+        if query.limit do
+          if query.offset && query.offset != 0 do
+            Logger.warn("ash_json_api_wrapper does not support limits with offsets yet, and so they will both be applied after.")
+            query
+          else
+            case endpoint.limit_with do
+              {:param, param} ->
+                %{
+                  query
+                  | request: %{
+                      query.request
+                      | query: Map.put(query.request.query || %{}, param, query.limit)
+                    }
+                }
+
+              _ ->
+                query
+            end
+          end
+        else
+          query
         end
 
       with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
@@ -558,14 +583,14 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp request(request, resource, path) do
-    case AshJsonApiWrapper.before_request(resource) do
+    case AshJsonApiWrapper.DataLayer.Info.before_request(resource) do
       nil ->
         request
         |> Map.put(:path, path)
         |> encode_query()
         |> encode_body()
         |> log_send()
-        |> Finch.request(AshJsonApiWrapper.finch(resource))
+        |> make_request(AshJsonApiWrapper.DataLayer.Info.finch(resource))
         |> log_resp()
 
       hook ->
@@ -575,9 +600,36 @@ defmodule AshJsonApiWrapper.DataLayer do
         |> encode_query()
         |> encode_body()
         |> log_send()
-        |> Finch.request(AshJsonApiWrapper.finch(resource))
+        |> make_request(AshJsonApiWrapper.DataLayer.Info.finch(resource))
         |> log_resp()
     end
+  end
+
+  def make_request(request, finch) do
+    case Finch.request(request, finch) do
+      {:ok, %{status: code, headers: headers} = response} when code >= 300 and code < 400 ->
+        headers
+        # some function to pluck headers
+        |> get_header("location")
+        |> case do
+          nil ->
+            {:ok, response}
+
+          location ->
+            raise "Following 300+ status code redirects not yet supported, was redirected to #{location}"
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp get_header(headers, name) do
+    Enum.find_value(headers, fn {key, value} ->
+      if key == name do
+        value
+      end
+    end)
   end
 
   defp log_send(request) do
@@ -724,6 +776,6 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defp get_field(resource, endpoint, field) do
     Enum.find(endpoint.fields || [], &(&1.name == field)) ||
-      Enum.find(AshJsonApiWrapper.fields(resource), &(&1.name == field))
+      Enum.find(AshJsonApiWrapper.DataLayer.Info.fields(resource), &(&1.name == field))
   end
 end

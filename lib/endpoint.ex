@@ -7,7 +7,8 @@ defmodule AshJsonApiWrapper.Endpoint do
     :fields_in,
     :write_entity_path,
     :get_for,
-    :runtime_sort?
+    :runtime_sort?,
+    :limit_with
   ]
 
   @type t :: %__MODULE__{}
@@ -23,6 +24,10 @@ defmodule AshJsonApiWrapper.Endpoint do
         type: :string,
         default: "/",
         doc: "The path of the endpoint relative to the base, or an absolute path"
+      ],
+      limit_with: [
+        type: :any,
+        doc: "To provide query limits as endpoint query params, use `{:param, \"param_name\"}`"
       ],
       fields_in: [
         type: {:in, [:body, :params]},
