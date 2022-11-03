@@ -28,7 +28,7 @@ defmodule AshJsonApiWrapper.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ash, "~> 2.0.0-rc.6"},
+      {:ash, "~> 2.4"},
       {:finch, "~> 0.9.0"},
       {:exjsonpath, "~> 0.1"},
       # Dev/Test dependencies
