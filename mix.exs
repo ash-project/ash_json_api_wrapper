@@ -29,7 +29,7 @@ defmodule AshJsonApiWrapper.MixProject do
   defp deps do
     [
       {:ash, "~> 2.4"},
-      {:finch, "~> 0.9.0"},
+      {:finch, "~> 0.14"},
       {:exjsonpath, "~> 0.1"},
       # Dev/Test dependencies
       {:ex_doc, "~> 0.22", only: :dev, runtime: false},
