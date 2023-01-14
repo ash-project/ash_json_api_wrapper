@@ -66,9 +66,10 @@ defmodule AshJsonApiWrapper.Endpoint do
     )
   end
 
-  def default(path) do
+  def default(resource) do
     %__MODULE__{
-      path: path,
+      path: AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource),
+      entity_path: AshJsonApiWrapper.DataLayer.Info.base_entity_path(resource),
       fields_in: :body
     }
   end

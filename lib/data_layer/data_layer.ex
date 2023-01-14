@@ -94,10 +94,18 @@ defmodule AshJsonApiWrapper.DataLayer do
     ],
     schema: [
       before_request: [
-        type: :any,
+        type:
+          {:spark_function_behaviour, AshJsonApiWrapper.Finch.Plug,
+           {AshJsonApiWrapper.Finch.Plug.Function, 2}},
         doc: """
         A function that takes the finch request and returns the finch request.
         Will be called just before the request is made for all requests, but before JSON encoding the body and query encoding the query parameters.
+        """
+      ],
+      base_entity_path: [
+        type: :string,
+        doc: """
+        Where in the response to find resulting entities. Can be overridden per endpoint.
         """
       ],
       finch: [
@@ -117,11 +125,16 @@ defmodule AshJsonApiWrapper.DataLayer do
   }
 
   require Logger
-  use Spark.Dsl.Extension, sections: [@json_api_wrapper]
+
+  use Spark.Dsl.Extension,
+    sections: [@json_api_wrapper],
+    transformers: [AshJsonApiWrapper.DataLayer.Transformers.SetEndpointDefaults]
 
   defmodule Query do
     defstruct [
       :request,
+      :context,
+      :headers,
       :action,
       :limit,
       :offset,
@@ -245,20 +258,19 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   @impl true
   def set_context(_resource, query, context) do
-    params = context[:data_layer][:query_params]
+    params = context[:data_layer][:query_params] || %{}
+    headers = Map.to_list(context[:data_layer][:headers] || %{})
 
     action = context[:action]
 
-    if params do
-      {:ok,
-       %{
-         query
-         | request: %{query.request | query: params},
-           action: action
-       }}
-    else
-      {:ok, %{query | action: action}}
-    end
+    {:ok,
+     %{
+       query
+       | request: %{query.request | query: params, headers: headers},
+         action: action,
+         headers: headers,
+         context: context
+     }}
   end
 
   defp validate_filter(filter, resource, action) when filter in [nil, true] do
@@ -425,7 +437,7 @@ defmodule AshJsonApiWrapper.DataLayer do
       |> Map.put(:query, params)
 
     with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-           request(request, resource, endpoint.path),
+           request(request, changeset, resource, endpoint.path),
          {:ok, body} <- Jason.decode(response.body),
          {:ok, entities} <- get_entities(body, endpoint),
          {:ok, processed} <- process_entities(entities, resource, endpoint) do
@@ -513,7 +525,10 @@ defmodule AshJsonApiWrapper.DataLayer do
       query =
         if query.limit do
           if query.offset && query.offset != 0 do
-            Logger.warn("ash_json_api_wrapper does not support limits with offsets yet, and so they will both be applied after.")
+            Logger.warn(
+              "ash_json_api_wrapper does not support limits with offsets yet, and so they will both be applied after."
+            )
+
             query
           else
             case endpoint.limit_with do
@@ -535,7 +550,7 @@ defmodule AshJsonApiWrapper.DataLayer do
         end
 
       with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-             request(query.request, resource, path),
+             request(query.request, query.context, resource, path),
            {:ok, body} <- Jason.decode(response.body),
            {:ok, entities} <- get_entities(body, endpoint) do
         entities
@@ -582,21 +597,21 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp request(request, resource, path) do
+  defp request(request, query_or_changeset, resource, path) do
     case AshJsonApiWrapper.DataLayer.Info.before_request(resource) do
-      nil ->
+      {module, opts} ->
         request
         |> Map.put(:path, path)
+        |> module.(query_or_changeset, opts)
         |> encode_query()
         |> encode_body()
         |> log_send()
         |> make_request(AshJsonApiWrapper.DataLayer.Info.finch(resource))
         |> log_resp()
 
-      hook ->
+      nil ->
         request
         |> Map.put(:path, path)
-        |> hook.()
         |> encode_query()
         |> encode_body()
         |> log_send()

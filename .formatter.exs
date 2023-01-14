@@ -1,5 +1,6 @@
 spark_locals_without_parens = [
   base: 1,
+  base_entity_path: 1,
   before_request: 1,
   endpoint: 1,
   endpoint: 2,

@@ -13,9 +13,14 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
     Extension.get_opt(resource, [:json_api_wrapper], :finch, nil, false)
   end
 
-  @spec before_request(Ash.Resource.t()) :: (Finch.Request.t() -> Finch.Request.t()) | nil
+  @spec base_entity_path(Ash.Resource.t()) :: String.t() | nil
+  def base_entity_path(resource) do
+    Extension.get_opt(resource, [:json_api_wrapper], :base_entity_path, nil, false)
+  end
+
+  @spec before_request(Ash.Resource.t()) :: AshJsonApiWrapper.Finch.Plug.ref() | nil
   def before_request(resource) do
-    Extension.get_opt(resource, [:json_api_wrapper], :before_request, nil, false)
+    Extension.get_opt(resource, [:json_api_wrapper], :before_request, nil)
   end
 
   @spec field(Ash.Resource.t(), atom) :: AshJsonApiWrapper.Field.t() | nil
@@ -32,7 +37,7 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
 
   @spec endpoint(Ash.Resource.t(), atom) :: AshJsonApiWrapper.Endpoint.t() | nil
   def endpoint(resource, action) do
-    default_endpoint = AshJsonApiWrapper.Endpoint.default(endpoint_base(resource))
+    default_endpoint = AshJsonApiWrapper.Endpoint.default(resource)
 
     resource
     |> Extension.get_entities([:json_api_wrapper, :endpoints])
@@ -53,7 +58,7 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
 
   @spec get_endpoint(Ash.Resource.t(), atom, atom) :: AshJsonApiWrapper.Endpoint.t() | nil
   def get_endpoint(resource, action, get_for) do
-    default_endpoint = AshJsonApiWrapper.Endpoint.default(endpoint_base(resource))
+    default_endpoint = AshJsonApiWrapper.Endpoint.default(resource)
 
     resource
     |> Extension.get_entities([:json_api_wrapper, :endpoints])
