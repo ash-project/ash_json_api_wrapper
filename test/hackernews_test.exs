@@ -159,11 +159,11 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
     Finch.start_link(name: MyApp.Finch)
 
     assert [top_story] =
-      TopStory
-      |> Ash.Query.limit(1)
-      |> Ash.Query.load(story: :user)
-      |> Api.read!()
-      |> Enum.map(& &1.story)
+             TopStory
+             |> Ash.Query.limit(1)
+             |> Ash.Query.load(story: :user)
+             |> Api.read!()
+             |> Enum.map(& &1.story)
 
     assert is_binary(top_story.url)
     assert is_binary(top_story.title)

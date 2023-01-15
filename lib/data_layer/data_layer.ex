@@ -92,6 +92,9 @@ defmodule AshJsonApiWrapper.DataLayer do
       @fields,
       @endpoints
     ],
+    imports: [
+      AshJsonApiWrapper.Paginator.Builtins
+    ],
     schema: [
       before_request: [
         type:
@@ -106,6 +109,13 @@ defmodule AshJsonApiWrapper.DataLayer do
         type: :string,
         doc: """
         Where in the response to find resulting entities. Can be overridden per endpoint.
+        """
+      ],
+      base_paginator: [
+        type:
+          {:spark_behaviour, AshJsonApiWrapper.Paginator, AshJsonApiWrapper.Paginator.Builtins},
+        doc: """
+        A module implementing the `AshJSonApiWrapper.Paginator` behaviour, to allow scanning pages when reading.
         """
       ],
       finch: [
@@ -132,6 +142,7 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defmodule Query do
     defstruct [
+      :api,
       :request,
       :context,
       :headers,
@@ -139,6 +150,7 @@ defmodule AshJsonApiWrapper.DataLayer do
       :limit,
       :offset,
       :filter,
+      :runtime_filter,
       :sort,
       :endpoint,
       :templates,
@@ -213,11 +225,73 @@ defmodule AshJsonApiWrapper.DataLayer do
       else
         if query.action do
           case validate_filter(filter, resource, query.action) do
-            {:ok, {endpoint, templates, instructions}} ->
+            {:ok, {endpoint, templates, instructions}, remaining_filter} ->
+              {instructions, templates} =
+                if templates && !Enum.empty?(templates) do
+                  {templates, instructions}
+                else
+                  instructions =
+                    instructions
+                    |> Enum.reduce([], fn
+                      {:expand_set, field, values} = instruction, new_instructions ->
+                        if Enum.any?(new_instructions, fn
+                             {:expand_set, ^field, _other_values} ->
+                               true
+
+                             _ ->
+                               false
+                           end) do
+                          Enum.map(new_instructions, fn
+                            {:expand_set, ^field, other_values} ->
+                              {:expand_set, field,
+                               other_values
+                               |> MapSet.new()
+                               |> MapSet.intersection(MapSet.new(values))
+                               |> MapSet.to_list()}
+
+                            other ->
+                              other
+                          end)
+                        else
+                          [instruction | new_instructions]
+                        end
+
+                      instruction, new_instructions ->
+                        [instruction | new_instructions]
+                    end)
+
+                  {expand_set, instructions} =
+                    Enum.split_with(instructions || [], fn
+                      {:expand_set, _, _} ->
+                        true
+
+                      _ ->
+                        false
+                    end)
+
+                  templates =
+                    expand_set
+                    |> Enum.at(0)
+                    |> case do
+                      nil ->
+                        nil
+
+                      {:expand_set, field, values} ->
+                        Enum.map(values, &{:set, field, &1})
+                    end
+
+                  {instructions, templates}
+                end
+
               new_query_params =
-                Enum.reduce(instructions, query.request.query || %{}, fn
-                  {:simple, field, value}, query ->
-                    Map.put(query, to_string(field), value)
+                Enum.reduce(instructions || [], query.request.query || %{}, fn
+                  {:set, field, value}, query ->
+                    field =
+                      field
+                      |> List.wrap()
+                      |> Enum.map(&to_string/1)
+
+                    AshJsonApiWrapper.Helpers.put_at_path(query, field, value)
 
                   {:place_in_list, path, value}, query ->
                     update_in!(query, path, [], &[value | &1])
@@ -228,6 +302,7 @@ defmodule AshJsonApiWrapper.DataLayer do
                  query
                  | endpoint: endpoint,
                    templates: templates,
+                   runtime_filter: remaining_filter,
                    request: %{query.request | query: new_query_params}
                }}
 
@@ -267,6 +342,7 @@ defmodule AshJsonApiWrapper.DataLayer do
      %{
        query
        | request: %{query.request | query: params, headers: headers},
+         api: query.api,
          action: action,
          headers: headers,
          context: context
@@ -274,26 +350,20 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp validate_filter(filter, resource, action) when filter in [nil, true] do
-    {:ok, {AshJsonApiWrapper.DataLayer.Info.endpoint(resource, action.name), nil, []}}
+    {:ok, {AshJsonApiWrapper.DataLayer.Info.endpoint(resource, action.name), nil, []}, filter}
   end
 
   defp validate_filter(filter, resource, action) do
     case AshJsonApiWrapper.Filter.find_filter_that_uses_get_endpoint(filter, resource, action) do
       {:ok, {remaining_filter, get_endpoint, templates}} ->
-        case filter_instructions(remaining_filter, resource, get_endpoint) do
-          {:ok, instructions} ->
-            {:ok, {get_endpoint, templates, instructions}}
-
-          {:error, error} ->
-            {:error, error}
-        end
+        {:ok, {get_endpoint, templates, []}, remaining_filter}
 
       {:ok, nil} ->
         endpoint = AshJsonApiWrapper.DataLayer.Info.endpoint(resource, action.name)
 
         case filter_instructions(filter, resource, endpoint) do
-          {:ok, instructions} ->
-            {:ok, {endpoint, nil, instructions}}
+          {:ok, instructions, remaining_filter} ->
+            {:ok, {endpoint, nil, instructions}, remaining_filter}
 
           {:error, error} ->
             {:error, error}
@@ -304,25 +374,40 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp filter_instructions(filter, resource, endpoint) do
-    base_fields =
-      resource
-      |> AshJsonApiWrapper.DataLayer.Info.fields()
-      |> Map.new(&{&1.name, &1})
-
+  defp filter_instructions(filter, _resource, endpoint) do
     fields =
       endpoint.fields
-      |> Enum.reduce(base_fields, fn field, acc ->
-        Map.put(acc, field.name, field)
-      end)
-      |> Map.values()
+      |> List.wrap()
       |> Enum.filter(& &1.filter_handler)
 
     Enum.reduce_while(fields, {:ok, [], filter}, fn field, {:ok, instructions, filter} ->
       result =
         case field.filter_handler do
           :simple ->
-            AshJsonApiWrapper.Filter.find_simple_filter(filter, field)
+            AshJsonApiWrapper.Filter.find_simple_filter(filter, field.name)
+
+          {:simple, path} ->
+            case AshJsonApiWrapper.Filter.find_simple_filter(filter, field.name) do
+              {:ok, {remaining_filter, new_instructions}} ->
+                field_name = field.name
+
+                {:ok,
+                 {remaining_filter,
+                  Enum.map(new_instructions, fn
+                    {:set, ^field_name, value} ->
+                      {:set, path, value}
+
+                    {:expand_set, ^field_name, values} ->
+                      {:expand_set, path, values}
+
+                    other ->
+                      # don't think this is possible
+                      other
+                  end)}}
+
+              other ->
+                other
+            end
 
           {:place_in_list, path} ->
             AshJsonApiWrapper.Filter.find_place_in_list_filter(
@@ -338,18 +423,14 @@ defmodule AshJsonApiWrapper.DataLayer do
 
         {:ok, {remaining_filter, new_instructions}} ->
           {:cont, {:ok, new_instructions ++ instructions, remaining_filter}}
-
-        {:error, error} ->
-          {:halt, {:error, error}}
       end
     end)
     |> case do
       {:ok, instructions, nil} ->
-        {:ok, instructions}
+        {:ok, instructions, nil}
 
-      {:ok, _instructions, remaining_filter} ->
-        {:error,
-         "Some part of the provided filter statement was not processes: #{inspect(remaining_filter)}"}
+      {:ok, instructions, remaining_filter} ->
+        {:ok, instructions, remaining_filter}
 
       {:error, error} ->
         {:error, error}
@@ -436,11 +517,13 @@ defmodule AshJsonApiWrapper.DataLayer do
       )
       |> Map.put(:query, params)
 
-    with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-           request(request, changeset, resource, endpoint.path),
+    with request <- request(request, changeset, resource, endpoint.path),
+         {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
+           do_request(request, resource),
          {:ok, body} <- Jason.decode(response.body),
-         {:ok, entities} <- get_entities(body, endpoint),
-         {:ok, processed} <- process_entities(entities, resource, endpoint) do
+         {:ok, entities} <- get_entities(body, endpoint, resource),
+         {:ok, processed} <-
+           process_entities(entities, resource, endpoint) do
       {:ok, Enum.at(processed, 0)}
     else
       {:ok, %{status: status} = response} ->
@@ -486,11 +569,12 @@ defmodule AshJsonApiWrapper.DataLayer do
   def run_query(query, resource, overridden?) do
     if query.templates do
       query.templates
+      |> Enum.uniq()
       |> Task.async_stream(
         fn template ->
           query = %{
             query
-            | request: Finch.build(:get, fill_template(query.endpoint.path, template)),
+            | request: fill_template(query.request, template),
               templates: nil
           }
 
@@ -549,10 +633,11 @@ defmodule AshJsonApiWrapper.DataLayer do
           query
         end
 
-      with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-             request(query.request, query.context, resource, path),
+      with request <- request(query.request, query.context, resource, path),
+           {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
+             do_request(request, resource),
            {:ok, body} <- Jason.decode(response.body),
-           {:ok, entities} <- get_entities(body, endpoint) do
+           {:ok, entities} <- get_entities(body, endpoint, resource, paginate_with: request) do
         entities
         |> limit_offset(query)
         |> process_entities(resource, endpoint)
@@ -566,6 +651,19 @@ defmodule AshJsonApiWrapper.DataLayer do
       end
     end
     |> do_sort(query)
+    |> runtime_filter(query)
+  end
+
+  defp runtime_filter({:ok, results}, query) do
+    if not is_nil(query.runtime_filter) do
+      Ash.Filter.Runtime.filter_matches(query.api, results, query.runtime_filter)
+    else
+      {:ok, results}
+    end
+  end
+
+  defp runtime_filter(other, _) do
+    other
   end
 
   defp do_sort({:ok, results}, %{sort: sort}) when sort not in [nil, []] do
@@ -574,11 +672,23 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defp do_sort(other, _), do: other
 
-  defp fill_template(string, template) do
+  defp fill_template(request, template) do
     template
     |> List.wrap()
-    |> Enum.reduce(string, fn {key, replacement}, acc ->
-      String.replace(acc, ":#{key}", to_string(replacement))
+    |> Enum.reduce(request, fn
+      {key, replacement}, request ->
+        %{
+          request
+          | path: String.replace(request.path, ":#{key}", to_string(replacement))
+        }
+
+      {:set, key, value}, request ->
+        key =
+          key
+          |> List.wrap()
+          |> Enum.map(&to_string/1)
+
+        %{request | query: AshJsonApiWrapper.Helpers.put_at_path(request.query, key, value)}
     end)
   end
 
@@ -600,27 +710,24 @@ defmodule AshJsonApiWrapper.DataLayer do
   defp request(request, query_or_changeset, resource, path) do
     case AshJsonApiWrapper.DataLayer.Info.before_request(resource) do
       {module, opts} ->
-        request
-        |> Map.put(:path, path)
-        |> module.(query_or_changeset, opts)
-        |> encode_query()
-        |> encode_body()
-        |> log_send()
-        |> make_request(AshJsonApiWrapper.DataLayer.Info.finch(resource))
-        |> log_resp()
+        module.call(Map.put(request, :path, path), query_or_changeset, opts)
 
       nil ->
         request
         |> Map.put(:path, path)
-        |> encode_query()
-        |> encode_body()
-        |> log_send()
-        |> make_request(AshJsonApiWrapper.DataLayer.Info.finch(resource))
-        |> log_resp()
     end
   end
 
-  def make_request(request, finch) do
+  defp do_request(request, resource) do
+    request
+    |> encode_query()
+    |> encode_body()
+    |> log_send()
+    |> make_request(AshJsonApiWrapper.DataLayer.Info.finch(resource))
+    |> log_resp()
+  end
+
+  defp make_request(request, finch) do
     case Finch.request(request, finch) do
       {:ok, %{status: code, headers: headers} = response} when code >= 300 and code < 400 ->
         headers
@@ -770,24 +877,100 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp get_entities(body, endpoint) do
-    case endpoint.entity_path do
-      nil ->
-        {:ok, List.wrap(body)}
+  defp get_entities(body, endpoint, resource, opts \\ []) do
+    if opts[:paginate_with] && endpoint.paginator do
+      with {:ok, entities} <-
+             get_entities(body, endpoint, resource, Keyword.delete(opts, :paginate_with)),
+           {:ok, bodies} <-
+             get_all_bodies(
+               body,
+               endpoint,
+               resource,
+               opts[:paginate_with],
+               &get_entities(&1, endpoint, resource, Keyword.delete(opts, :paginate_with)),
+               [entities]
+             ) do
+        {:ok, bodies |> Enum.reverse() |> List.flatten()}
+      end
+    else
+      case endpoint.entity_path do
+        nil ->
+          {:ok, List.wrap(body)}
 
-      path ->
-        case ExJSONPath.eval(body, path) do
-          {:ok, [entities | _]} ->
-            {:ok, List.wrap(entities)}
+        path ->
+          case ExJSONPath.eval(body, path) do
+            {:ok, [entities | _]} ->
+              {:ok, List.wrap(entities)}
 
-          {:ok, _} ->
-            {:ok, []}
+            {:ok, _} ->
+              {:ok, []}
+
+            {:error, error} ->
+              {:error, error}
+          end
+      end
+    end
+  end
+
+  defp get_all_bodies(
+         body,
+         %{paginator: {module, opts}} = endpoint,
+         resource,
+         request,
+         entity_callback,
+         bodies
+       ) do
+    case module.continue(body, Enum.at(bodies, 0), request, opts) do
+      :halt ->
+        {:ok, bodies}
+
+      {:ok, instructions} ->
+        request = apply_instructions(request, instructions)
+
+        case do_request(request, resource) do
+          {:ok, %{status: status} = response} when status >= 200 and status < 300 ->
+            with {:ok, new_body} <- Jason.decode(response.body),
+                 {:ok, entities} <- entity_callback.(new_body) do
+              get_all_bodies(new_body, endpoint, resource, request, entity_callback, [
+                entities | bodies
+              ])
+            end
+
+          {:ok, %{status: status} = response} ->
+            {:error,
+             "Received status code #{status} in request #{inspect(request)}. Response: #{inspect(response)}"}
 
           {:error, error} ->
             {:error, error}
         end
     end
   end
+
+  defp apply_instructions(request, instructions) do
+    request
+    |> apply_params(instructions)
+    |> apply_headers(instructions)
+  end
+
+  defp apply_params(request, %{params: params}) when is_map(params) do
+    %{request | query: Ash.Helpers.deep_merge_maps(request.query || %{}, params)}
+  end
+
+  defp apply_params(request, _), do: request
+
+  defp apply_headers(request, %{headers: headers}) when is_map(headers) do
+    %{
+      request
+      | headers:
+          request.headers
+          |> Kernel.||(%{})
+          |> Map.new()
+          |> Map.merge(headers)
+          |> Map.to_list()
+    }
+  end
+
+  defp apply_headers(request, _), do: request
 
   defp get_field(resource, endpoint, field) do
     Enum.find(endpoint.fields || [], &(&1.name == field)) ||

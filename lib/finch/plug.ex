@@ -5,6 +5,8 @@ defmodule AshJsonApiWrapper.Finch.Plug do
     end
   end
 
+  @type ref :: {module, Keyword.t()}
+
   @callback call(
               request :: Finch.Request.t(),
               query_or_changeset :: Ash.Changeset.t() | Ash.Query.t(),

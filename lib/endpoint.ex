@@ -8,7 +8,8 @@ defmodule AshJsonApiWrapper.Endpoint do
     :write_entity_path,
     :get_for,
     :runtime_sort?,
-    :limit_with
+    :limit_with,
+    :paginator
   ]
 
   @type t :: %__MODULE__{}
@@ -48,6 +49,12 @@ defmodule AshJsonApiWrapper.Endpoint do
         default: false,
         doc:
           "Whether or not this endpoint should support sorting at runtime after the data has been received."
+      ],
+      paginator: [
+        type:
+          {:spark_behaviour, AshJsonApiWrapper.Paginator, AshJsonApiWrapper.Paginator.Builtins},
+        doc:
+          "A module implementing the `AshJSonApiWrapper.Paginator` behaviour, to allow scanning pages when reading."
       ]
     ]
   end
@@ -70,6 +77,8 @@ defmodule AshJsonApiWrapper.Endpoint do
     %__MODULE__{
       path: AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource),
       entity_path: AshJsonApiWrapper.DataLayer.Info.base_entity_path(resource),
+      paginator: AshJsonApiWrapper.DataLayer.Info.base_paginator(resource),
+      fields: AshJsonApiWrapper.DataLayer.Info.fields(resource),
       fields_in: :body
     }
   end

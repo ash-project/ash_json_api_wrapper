@@ -3,26 +3,30 @@ defmodule AshJsonApiWrapper.DataLayer.Transformers.SetEndpointDefaults do
 
   alias Spark.Dsl.Transformer
 
+  @impl Spark.Dsl.Transformer
   def transform(dsl) do
-    base_entity_path = AshJsonApiWrapper.DataLayer.Info.base_entity_path(dsl) || nil
+    base_entity_path = AshJsonApiWrapper.DataLayer.Info.base_entity_path(dsl)
+    base_paginator = AshJsonApiWrapper.DataLayer.Info.base_paginator(dsl)
+    base_fields = AshJsonApiWrapper.DataLayer.Info.fields(dsl)
 
     dsl
     |> AshJsonApiWrapper.DataLayer.Info.endpoints()
     |> Enum.reduce({:ok, dsl}, fn endpoint, {:ok, dsl} ->
-      if endpoint.entity_path || is_nil(base_entity_path) do
-        {:ok, dsl}
-      else
-        {:ok,
-         Transformer.replace_entity(
-           dsl,
-           [:ash_json_api_wrapper, :endpoint],
-           %{
-             endpoint
-             | entity_path: base_entity_path
-           },
-           &(&1.action == endpoint.action)
-         )}
-      end
+      endpoint_field_names = Enum.map(endpoint.fields, & &1.name)
+
+      {:ok,
+       Transformer.replace_entity(
+         dsl,
+         [:ash_json_api_wrapper, :endpoint],
+         %{
+           endpoint
+           | entity_path: endpoint.entity_path || base_entity_path,
+             paginator: endpoint.paginator || base_paginator,
+             fields:
+               Enum.reject(base_fields, &(&1.name in endpoint_field_names)) ++ endpoint.fields
+         },
+         &(&1.action == endpoint.action)
+       )}
     end)
   end
 end

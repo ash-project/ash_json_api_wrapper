@@ -1,64 +1,51 @@
 defmodule AshJsonApiWrapper.Filter do
   @moduledoc false
 
-  def find_simple_filter(
-        filter,
-        field,
-        context \\ %{in_an_or?: false, other_branch_instructions: nil}
-      )
-
-  def find_simple_filter(%Ash.Filter{expression: expression}, field, context) do
-    find_simple_filter(expression, field, context)
+  def find_simple_filter(%Ash.Filter{expression: expression}, field) do
+    find_simple_filter(expression, field)
   end
 
   def find_simple_filter(
-        %Ash.Query.BooleanExpression{op: op, left: left, right: right} = expr,
-        field,
-        context
+        %Ash.Query.BooleanExpression{op: :and, left: left, right: right} = expr,
+        field
       ) do
-    case find_simple_filter(left, field, context) do
+    case find_simple_filter(left, field) do
       {:ok, nil} ->
-        case find_simple_filter(right, field, context) do
+        case find_simple_filter(right, field) do
           {:ok, nil} ->
             {:ok, expr, []}
 
           {:ok, {right_remaining, right_instructions}} ->
-            {:ok, Ash.Query.BooleanExpression.new(op, left, right_remaining), right_instructions}
+            {:ok, Ash.Query.BooleanExpression.new(:and, left, right_remaining),
+             right_instructions}
         end
 
       {:ok, {left_remaining, left_instructions}} ->
-        case find_simple_filter(right, field, %{
-               context
-               | other_branch_instructions: left_instructions
-             }) do
+        case find_simple_filter(right, field) do
           {:ok, nil} ->
-            {:ok, {Ash.Query.BooleanExpression.new(op, left_remaining, right), left_instructions}}
+            {:ok,
+             {Ash.Query.BooleanExpression.new(:and, left_remaining, right), left_instructions}}
 
           {:ok, {right_remaining, right_instructions}} ->
             {:ok,
-             {Ash.Query.BooleanExpression.new(op, left_remaining, right_remaining),
+             {Ash.Query.BooleanExpression.new(:and, left_remaining, right_remaining),
               left_instructions ++ right_instructions}}
-
-          {:error, error} ->
-            {:error, error}
         end
     end
   end
 
   def find_simple_filter(
         %Ash.Query.Operator.Eq{left: left, right: %Ash.Query.Ref{} = right} = op,
-        field,
-        context
+        field
       ) do
-    find_simple_filter(%{op | right: left, left: right}, field, context)
+    find_simple_filter(%{op | right: left, left: right}, field)
   end
 
   def find_simple_filter(
         %Ash.Query.Operator.Eq{
           left: %Ash.Query.Ref{relationship_path: [], attribute: %{name: name}}
         },
-        field,
-        _context
+        field
       )
       when name != field do
     {:ok, nil}
@@ -69,20 +56,23 @@ defmodule AshJsonApiWrapper.Filter do
           left: %Ash.Query.Ref{relationship_path: [], attribute: %{name: field}},
           right: value
         },
-        field,
-        context
+        field
       ) do
-    if Enum.any?(context.other_branch_instructions, fn
-         {:simple, other_field, other_value} ->
-           other_field == field && other_value != value
+    {:ok, {nil, [{:set, field, value}]}}
+  end
 
-         _ ->
-           false
-       end) do
-      {:error, "Would set a simple filter for #{field} with two different values"}
-    else
-      {:ok, {nil, [{:set, field, value}]}}
-    end
+  def find_simple_filter(
+        %Ash.Query.Operator.In{
+          left: %Ash.Query.Ref{relationship_path: [], attribute: %{name: field}},
+          right: values
+        },
+        field
+      ) do
+    {:ok, {nil, [{:expand_set, field, values}]}}
+  end
+
+  def find_simple_filter(_, _) do
+    {:ok, nil}
   end
 
   def find_place_in_list_filter(
@@ -303,15 +293,14 @@ defmodule AshJsonApiWrapper.Filter do
   end
 
   def find_filter_that_uses_get_endpoint(
-        %Ash.Query.Operator.Eq{left: %Ash.Query.Ref{}, right: %Ash.Query.Ref{}},
+        %Ash.Query.Operator.Eq{left: %Ash.Query.Ref{}, right: %Ash.Query.Ref{}} = expr,
         _,
         _,
         _,
         _,
-        _
+        uses_endpoint
       ) do
-    {:error,
-     "References on both sides of operators not supported in ash_json_api_wrapper currently"}
+    {:ok, {expr, uses_endpoint, nil}}
   end
 
   def find_filter_that_uses_get_endpoint(

@@ -24,7 +24,8 @@ defmodule AshJsonApiWrapper.Field do
         Specification for how the field is handled when used in filters. This is relatively limited at the moment.
 
         Supports the following:
-        * `:simple` - Sets the value directly into the query params. Does not support `or equals` or `in` filters.
+        * `:simple` - Sets the value directly into the query params.
+        * `{:simple, "key" | ["path", "to", "key"]}` - Sets the value directly into the query params using the provided key.
         * `{:place_in_list, ["path", "to", "list"]}` - Supports `or equals` and `in` filters over the given field, by placing their values in the provided list.
         """
       ]
