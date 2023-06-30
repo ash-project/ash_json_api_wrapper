@@ -9,8 +9,6 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
       data_layer: AshJsonApiWrapper.DataLayer
 
     json_api_wrapper do
-      finch MyApp.Finch
-
       endpoints do
         base "https://hacker-news.firebaseio.com/v0/"
 
@@ -88,8 +86,6 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
     end
 
     json_api_wrapper do
-      finch MyApp.Finch
-
       endpoints do
         base "https://hacker-news.firebaseio.com/v0/"
 
@@ -124,8 +120,6 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
     end
 
     json_api_wrapper do
-      finch MyApp.Finch
-
       endpoints do
         base "https://hacker-news.firebaseio.com/v0/"
 
@@ -156,8 +150,6 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   end
 
   test "it works" do
-    Finch.start_link(name: MyApp.Finch)
-
     assert [top_story] =
              TopStory
              |> Ash.Query.limit(1)

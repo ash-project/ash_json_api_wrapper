@@ -14,7 +14,6 @@ defmodule AshJsonApiWrapper.Paginator do
   @callback continue(
               response :: term,
               entities :: [Ash.Resource.record()],
-              request :: Finch.Request.t(),
               opts :: Keyword.t()
             ) :: {:ok, %{optional(:params) => map, optional(:headers) => map}} | :halt
 end

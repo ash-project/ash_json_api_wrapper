@@ -96,15 +96,6 @@ defmodule AshJsonApiWrapper.DataLayer do
       AshJsonApiWrapper.Paginator.Builtins
     ],
     schema: [
-      before_request: [
-        type:
-          {:spark_function_behaviour, AshJsonApiWrapper.Finch.Plug,
-           {AshJsonApiWrapper.Finch.Plug.Function, 2}},
-        doc: """
-        A function that takes the finch request and returns the finch request.
-        Will be called just before the request is made for all requests, but before JSON encoding the body and query encoding the query parameters.
-        """
-      ],
       base_entity_path: [
         type: :string,
         doc: """
@@ -118,17 +109,11 @@ defmodule AshJsonApiWrapper.DataLayer do
         A module implementing the `AshJSonApiWrapper.Paginator` behaviour, to allow scanning pages when reading.
         """
       ],
-      finch: [
+      tesla: [
         type: :atom,
-        required: true,
+        default: AshJsonApiWrapper.DefaultTesla,
         doc: """
-        The name used when setting up your finch supervisor in your Application.
-
-        e.g in this example from finch's readme:
-
-        ```elixir
-        {Finch, name: MyConfiguredFinch <- this value}
-        ```
+        The Tesla module to use.
         """
       ]
     ]
@@ -143,7 +128,6 @@ defmodule AshJsonApiWrapper.DataLayer do
   defmodule Query do
     defstruct [
       :api,
-      :request,
       :context,
       :headers,
       :action,
@@ -151,6 +135,9 @@ defmodule AshJsonApiWrapper.DataLayer do
       :offset,
       :filter,
       :runtime_filter,
+      :path,
+      :query_params,
+      :body,
       :sort,
       :endpoint,
       :templates,
@@ -211,8 +198,8 @@ defmodule AshJsonApiWrapper.DataLayer do
   def can?(_, _), do: false
 
   @impl true
-  def resource_to_query(resource) do
-    %Query{request: Finch.build(:get, AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource))}
+  def resource_to_query(resource, api \\ nil) do
+    %Query{path: AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource), api: api}
   end
 
   @impl true
@@ -226,7 +213,7 @@ defmodule AshJsonApiWrapper.DataLayer do
         if query.action do
           case validate_filter(filter, resource, query.action) do
             {:ok, {endpoint, templates, instructions}, remaining_filter} ->
-              {instructions, templates} =
+              {templates, instructions} =
                 if templates && !Enum.empty?(templates) do
                   {templates, instructions}
                 else
@@ -280,11 +267,11 @@ defmodule AshJsonApiWrapper.DataLayer do
                         Enum.map(values, &{:set, field, &1})
                     end
 
-                  {instructions, templates}
+                  {templates, instructions}
                 end
 
               new_query_params =
-                Enum.reduce(instructions || [], query.request.query || %{}, fn
+                Enum.reduce(instructions || [], query.query_params || %{}, fn
                   {:set, field, value}, query ->
                     field =
                       field
@@ -303,7 +290,7 @@ defmodule AshJsonApiWrapper.DataLayer do
                  | endpoint: endpoint,
                    templates: templates,
                    runtime_filter: remaining_filter,
-                   request: %{query.request | query: new_query_params}
+                   query_params: new_query_params
                }}
 
             {:error, error} ->
@@ -341,10 +328,10 @@ defmodule AshJsonApiWrapper.DataLayer do
     {:ok,
      %{
        query
-       | request: %{query.request | query: params, headers: headers},
+       | query_params: params,
+         headers: headers,
          api: query.api,
          action: action,
-         headers: headers,
          context: context
      }}
   end
@@ -508,18 +495,15 @@ defmodule AshJsonApiWrapper.DataLayer do
           {with_attrs, changeset.context[:data_layer][:query_params] || %{}}
       end
 
-    request =
-      :post
-      |> Finch.build(
-        endpoint.path || AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource),
-        [{"Content-Type", "application/json"}, {"Accept", "application/json"}],
-        body
-      )
-      |> Map.put(:query, params)
+    path = endpoint.path || AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource)
+    headers = [{"Content-Type", "application/json"}, {"Accept", "application/json"}]
 
-    with request <- request(request, changeset, resource, endpoint.path),
-         {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-           do_request(request, resource),
+    with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
+           AshJsonApiWrapper.DataLayer.Info.tesla(resource).get(path,
+             body: body,
+             query: params,
+             headers: headers
+           ),
          {:ok, body} <- Jason.decode(response.body),
          {:ok, entities} <- get_entities(body, endpoint, resource),
          {:ok, processed} <-
@@ -527,8 +511,9 @@ defmodule AshJsonApiWrapper.DataLayer do
       {:ok, Enum.at(processed, 0)}
     else
       {:ok, %{status: status} = response} ->
+        # TODO: add method/query params
         {:error,
-         "Received status code #{status} in request #{inspect(request)}. Response: #{inspect(response)}"}
+         "Received status code #{status} from GET #{path}. Response: #{inspect(response)}"}
 
       other ->
         other
@@ -567,18 +552,25 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   def run_query(query, resource, overridden?) do
+    endpoint =
+      query.endpoint || AshJsonApiWrapper.DataLayer.Info.endpoint(resource, query.action.name)
+
+    query =
+      if overridden? do
+        query
+      else
+        %{query | path: endpoint.path}
+      end
+
     if query.templates do
       query.templates
       |> Enum.uniq()
       |> Task.async_stream(
         fn template ->
-          query = %{
-            query
-            | request: fill_template(query.request, template),
-              templates: nil
-          }
-
-          run_query(query, resource, true)
+          query
+          |> fill_template(template)
+          |> Map.put(:templates, nil)
+          |> run_query(resource, true)
         end,
         timeout: :infinity
       )
@@ -596,20 +588,10 @@ defmodule AshJsonApiWrapper.DataLayer do
         end
       )
     else
-      endpoint =
-        query.endpoint || AshJsonApiWrapper.DataLayer.Info.endpoint(resource, query.action.name)
-
-      path =
-        if overridden? do
-          query.request.path
-        else
-          endpoint.path
-        end
-
       query =
         if query.limit do
           if query.offset && query.offset != 0 do
-            Logger.warn(
+            Logger.warning(
               "ash_json_api_wrapper does not support limits with offsets yet, and so they will both be applied after."
             )
 
@@ -619,10 +601,7 @@ defmodule AshJsonApiWrapper.DataLayer do
               {:param, param} ->
                 %{
                   query
-                  | request: %{
-                      query.request
-                      | query: Map.put(query.request.query || %{}, param, query.limit)
-                    }
+                  | query_params: Map.put(query.query_params || %{}, param, query.limit)
                 }
 
               _ ->
@@ -633,18 +612,18 @@ defmodule AshJsonApiWrapper.DataLayer do
           query
         end
 
-      with request <- request(query.request, query.context, resource, path),
-           {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-             do_request(request, resource),
+      with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
+             make_request(resource, query),
            {:ok, body} <- Jason.decode(response.body),
-           {:ok, entities} <- get_entities(body, endpoint, resource, paginate_with: request) do
+           {:ok, entities} <- get_entities(body, endpoint, resource, paginate_with: query) do
         entities
         |> limit_offset(query)
         |> process_entities(resource, endpoint)
       else
         {:ok, %{status: status} = response} ->
+          # TODO: more info here
           {:error,
-           "Received status code #{status} in request #{inspect(query.request)}. Response: #{inspect(response)}"}
+           "Received status code #{status} from #{query.path}. Response: #{inspect(response)}"}
 
         other ->
           other
@@ -672,23 +651,26 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defp do_sort(other, _), do: other
 
-  defp fill_template(request, template) do
+  defp fill_template(query, template) do
     template
     |> List.wrap()
-    |> Enum.reduce(request, fn
-      {key, replacement}, request ->
+    |> Enum.reduce(query, fn
+      {key, replacement}, query ->
         %{
-          request
-          | path: String.replace(request.path, ":#{key}", to_string(replacement))
+          query
+          | path: String.replace(query.path, ":#{key}", to_string(replacement))
         }
 
-      {:set, key, value}, request ->
+      {:set, key, value}, query ->
         key =
           key
           |> List.wrap()
           |> Enum.map(&to_string/1)
 
-        %{request | query: AshJsonApiWrapper.Helpers.put_at_path(request.query, key, value)}
+        %{
+          query
+          | query_params: AshJsonApiWrapper.Helpers.put_at_path(query.query_params, key, value)
+        }
     end)
   end
 
@@ -707,108 +689,25 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp request(request, query_or_changeset, resource, path) do
-    case AshJsonApiWrapper.DataLayer.Info.before_request(resource) do
-      {module, opts} ->
-        module.call(Map.put(request, :path, path), query_or_changeset, opts)
+  defp make_request(resource, query) do
+    # log_send(path, query)
+    AshJsonApiWrapper.DataLayer.Info.tesla(resource).get(query.path,
+      body: query.body,
+      query: query.query_params
+    )
 
-      nil ->
-        request
-        |> Map.put(:path, path)
-    end
+    # |> log_resp(path, query)
   end
 
-  defp do_request(request, resource) do
-    request
-    |> encode_query()
-    |> encode_body()
-    |> log_send()
-    |> make_request(AshJsonApiWrapper.DataLayer.Info.finch(resource))
-    |> log_resp()
-  end
+  # defp log_send(request) do
+  #   Logger.debug("Sending request: #{inspect(request)}")
+  #   request
+  # end
 
-  defp make_request(request, finch) do
-    case Finch.request(request, finch) do
-      {:ok, %{status: code, headers: headers} = response} when code >= 300 and code < 400 ->
-        headers
-        # some function to pluck headers
-        |> get_header("location")
-        |> case do
-          nil ->
-            {:ok, response}
-
-          location ->
-            raise "Following 300+ status code redirects not yet supported, was redirected to #{location}"
-        end
-
-      other ->
-        other
-    end
-  end
-
-  defp get_header(headers, name) do
-    Enum.find_value(headers, fn {key, value} ->
-      if key == name do
-        value
-      end
-    end)
-  end
-
-  defp log_send(request) do
-    Logger.debug("Sending request: #{inspect(request)}")
-    request
-  end
-
-  defp log_resp(response) do
-    Logger.debug("Received response: #{inspect(response)}")
-    response
-  end
-
-  defp encode_query(%{query: query} = request) when is_map(query) do
-    %{request | query: do_encode_query(query)}
-  end
-
-  defp encode_query(request), do: request
-
-  defp do_encode_query(query) do
-    query
-    |> sanitize_for_encoding()
-    |> URI.encode_query()
-  end
-
-  defp sanitize_for_encoding(value, acc \\ %{}, prefix \\ nil)
-
-  defp sanitize_for_encoding(value, acc, prefix) when is_map(value) do
-    value
-    |> Enum.reduce(acc, fn {key, value}, acc ->
-      new_prefix =
-        if prefix do
-          prefix <> "[#{key}]"
-        else
-          to_string(key)
-        end
-
-      sanitize_for_encoding(value, acc, new_prefix)
-    end)
-  end
-
-  defp sanitize_for_encoding(value, acc, prefix) when is_list(value) do
-    value
-    |> Enum.with_index()
-    |> Map.new(fn {value, index} ->
-      {to_string(index), sanitize_for_encoding(value)}
-    end)
-    |> sanitize_for_encoding(acc, prefix)
-  end
-
-  defp sanitize_for_encoding(value, _acc, nil), do: value
-  defp sanitize_for_encoding(value, acc, prefix), do: Map.put(acc, prefix, value)
-
-  defp encode_body(%{body: body} = request) when is_map(body) do
-    %{request | body: Jason.encode!(body)}
-  end
-
-  defp encode_body(request), do: request
+  # defp log_resp(response) do
+  #   Logger.debug("Received response: #{inspect(response)}")
+  #   response
+  # end
 
   defp process_entities(entities, resource, endpoint) do
     Enum.reduce_while(entities, {:ok, []}, fn entity, {:ok, entities} ->
@@ -916,29 +815,30 @@ defmodule AshJsonApiWrapper.DataLayer do
          body,
          %{paginator: {module, opts}} = endpoint,
          resource,
-         request,
+         paginate_with,
          entity_callback,
          bodies
        ) do
-    case module.continue(body, Enum.at(bodies, 0), request, opts) do
+    case module.continue(body, Enum.at(bodies, 0), opts) do
       :halt ->
         {:ok, bodies}
 
       {:ok, instructions} ->
-        request = apply_instructions(request, instructions)
+        query = apply_instructions(paginate_with, instructions)
 
-        case do_request(request, resource) do
+        case make_request(resource, query) do
           {:ok, %{status: status} = response} when status >= 200 and status < 300 ->
             with {:ok, new_body} <- Jason.decode(response.body),
                  {:ok, entities} <- entity_callback.(new_body) do
-              get_all_bodies(new_body, endpoint, resource, request, entity_callback, [
+              get_all_bodies(new_body, endpoint, resource, paginate_with, entity_callback, [
                 entities | bodies
               ])
             end
 
           {:ok, %{status: status} = response} ->
+            # TODO: more info
             {:error,
-             "Received status code #{status} in request #{inspect(request)}. Response: #{inspect(response)}"}
+             "Received status code #{status} in #{query.path}. Response: #{inspect(response)}"}
 
           {:error, error} ->
             {:error, error}
@@ -946,23 +846,23 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp apply_instructions(request, instructions) do
-    request
+  defp apply_instructions(query, instructions) do
+    query
     |> apply_params(instructions)
     |> apply_headers(instructions)
   end
 
-  defp apply_params(request, %{params: params}) when is_map(params) do
-    %{request | query: Ash.Helpers.deep_merge_maps(request.query || %{}, params)}
+  defp apply_params(query, %{params: params}) when is_map(params) do
+    %{query | query_params: Ash.Helpers.deep_merge_maps(query.query_params || %{}, params)}
   end
 
-  defp apply_params(request, _), do: request
+  defp apply_params(query, _), do: query
 
-  defp apply_headers(request, %{headers: headers}) when is_map(headers) do
+  defp apply_headers(query, %{headers: headers}) when is_map(headers) do
     %{
-      request
+      query
       | headers:
-          request.headers
+          query.headers
           |> Kernel.||(%{})
           |> Map.new()
           |> Map.merge(headers)
@@ -970,7 +870,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     }
   end
 
-  defp apply_headers(request, _), do: request
+  defp apply_headers(query, _), do: query
 
   defp get_field(resource, endpoint, field) do
     Enum.find(endpoint.fields || [], &(&1.name == field)) ||

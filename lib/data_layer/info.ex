@@ -8,9 +8,15 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
     Extension.get_opt(resource, [:json_api_wrapper, :endpoints], :base, nil, false)
   end
 
-  @spec finch(map | Ash.Resource.t()) :: module | nil
-  def finch(resource) do
-    Extension.get_opt(resource, [:json_api_wrapper], :finch, nil, false)
+  @spec tesla(map | Ash.Resource.t()) :: module | nil
+  def tesla(resource) do
+    Extension.get_opt(
+      resource,
+      [:json_api_wrapper],
+      :tesla,
+      AshJsonApiWrapper.DefaultTesla,
+      false
+    )
   end
 
   @spec base_entity_path(map | Ash.Resource.t()) :: String.t() | nil
@@ -21,11 +27,6 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
   @spec base_paginator(map | Ash.Resource.t()) :: AshJsonApiWrapper.Paginator.ref()
   def base_paginator(resource) do
     Extension.get_opt(resource, [:json_api_wrapper], :base_paginator, nil, false)
-  end
-
-  @spec before_request(map | Ash.Resource.t()) :: AshJsonApiWrapper.Finch.Plug.ref() | nil
-  def before_request(resource) do
-    Extension.get_opt(resource, [:json_api_wrapper], :before_request, nil)
   end
 
   @spec field(map | Ash.Resource.t(), atom) :: AshJsonApiWrapper.Field.t() | nil
