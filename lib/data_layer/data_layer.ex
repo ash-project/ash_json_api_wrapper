@@ -193,6 +193,8 @@ defmodule AshJsonApiWrapper.DataLayer do
       ),
       do: true
 
+  def can?(_, :nested_expressions), do: true
+
   def can?(_, :sort), do: true
   def can?(_, {:sort, _}), do: true
   def can?(_, _), do: false
@@ -361,9 +363,11 @@ defmodule AshJsonApiWrapper.DataLayer do
     end
   end
 
-  defp filter_instructions(filter, _resource, endpoint) do
+  defp filter_instructions(filter, resource, endpoint) do
     fields =
       endpoint.fields
+      |> Enum.concat(AshJsonApiWrapper.DataLayer.Info.fields(resource))
+      |> Enum.uniq_by(& &1.name)
       |> List.wrap()
       |> Enum.filter(& &1.filter_handler)
 
@@ -691,6 +695,8 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defp make_request(resource, query) do
     # log_send(path, query)
+    IO.inspect(query.query_params)
+
     AshJsonApiWrapper.DataLayer.Info.tesla(resource).get(query.path,
       body: query.body,
       query: query.query_params
@@ -794,6 +800,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     else
       case endpoint.entity_path do
         nil ->
+          IO.inspect(endpoint)
           {:ok, List.wrap(body)}
 
         path ->
