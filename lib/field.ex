@@ -27,6 +27,7 @@ defmodule AshJsonApiWrapper.Field do
         * `:simple` - Sets the value directly into the query params.
         * `{:simple, "key" | ["path", "to", "key"]}` - Sets the value directly into the query params using the provided key.
         * `{:place_in_list, ["path", "to", "list"]}` - Supports `or equals` and `in` filters over the given field, by placing their values in the provided list.
+        * `{:place_in_csv_list, ["path", "to", "list"]}` - Supports `or equals` and `in` filters over the given field, by placing their values in the provided list.
         """
       ]
     ]

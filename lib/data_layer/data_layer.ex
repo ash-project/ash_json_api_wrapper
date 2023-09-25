@@ -283,7 +283,10 @@ defmodule AshJsonApiWrapper.DataLayer do
                     AshJsonApiWrapper.Helpers.put_at_path(query, field, value)
 
                   {:place_in_list, path, value}, query ->
-                    update_in!(query, path, [], &[value | &1])
+                    update_in!(query, path, [value], &[value | &1])
+
+                  {:place_in_csv_list, path, value}, query ->
+                    update_in!(query, path, "#{value}", &"#{&1},#{value}")
                 end)
 
               {:ok,
@@ -404,7 +407,16 @@ defmodule AshJsonApiWrapper.DataLayer do
             AshJsonApiWrapper.Filter.find_place_in_list_filter(
               filter,
               field.name,
-              path
+              path,
+              :place_in_list
+            )
+
+          {:place_in_csv_list, path} ->
+            AshJsonApiWrapper.Filter.find_place_in_list_filter(
+              filter,
+              field.name,
+              path,
+              :place_in_csv_list
             )
         end
 
@@ -800,7 +812,6 @@ defmodule AshJsonApiWrapper.DataLayer do
     else
       case endpoint.entity_path do
         nil ->
-          IO.inspect(endpoint)
           {:ok, List.wrap(body)}
 
         path ->

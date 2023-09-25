@@ -7,7 +7,7 @@ defmodule AshJsonApiWrapper.DataLayer.Transformers.SetEndpointDefaults do
   def transform(dsl) do
     base_entity_path = AshJsonApiWrapper.DataLayer.Info.base_entity_path(dsl)
     base_paginator = AshJsonApiWrapper.DataLayer.Info.base_paginator(dsl)
-    base_fields = AshJsonApiWrapper.DataLayer.Info.fields(dsl) |> IO.inspect()
+    base_fields = AshJsonApiWrapper.DataLayer.Info.fields(dsl)
 
     dsl
     |> AshJsonApiWrapper.DataLayer.Info.endpoints()

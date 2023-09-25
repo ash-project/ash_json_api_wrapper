@@ -5,8 +5,7 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
       endpoints =
         json
         |> operations(config)
-        |> Enum.take(1)
-        |> Enum.map_join("\n\n", fn {path, method, operation} ->
+        |> Enum.map_join("\n\n", fn {path, _method, operation} ->
           entity_path =
             if config[:entity_path] do
               "entity_path \"#{config[:entity_path]}\""
@@ -23,14 +22,13 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
       actions =
         json
         |> operations(config)
-        |> Enum.take(1)
         |> Enum.map_join("\n\n", fn
-          {path, "get", config} ->
+          {_path, "get", config} ->
             """
             read :#{operation_id(config)}
             """
 
-          {path, "post", config} ->
+          {_path, "post", config} ->
             """
             create :#{operation_id(config)}
             """
@@ -78,7 +76,7 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
         |> Enum.map_join("\n\n", fn {name, property} ->
           type =
             case property do
-              %{"enum" => values} ->
+              %{"enum" => _values} ->
                 ":atom"
 
               %{"format" => "date-time"} ->
@@ -181,7 +179,6 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
 
       {resource, code}
     end)
-    |> Enum.take(1)
   end
 
   defp operation_id(%{"operationId" => operationId}) do

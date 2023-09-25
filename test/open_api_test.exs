@@ -1,4 +1,4 @@
-defmodule AshJsonApiWrapper.Hackernews.Test do
+defmodule AshJsonApiWrapper.OpenApiTest do
   use ExUnit.Case
 
   require Ash.Query
@@ -25,34 +25,13 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
         entity_path: "objects",
         fields: [
           guid: [
-            filter_handler: {:place_in_list, ["guid"]}
-            # {
-            #   "name": "guid",
-            #   "in": "query",
-            #   "required": false,
-            #   "description": "Comma separated account_guids to list accounts for.",
-            #   "schema": {
-            #     "type": "string"
-            #   }
-            # },
-            # {
-            #   "name": "bank_guid",
-            #   "in": "query",
-            #   "required": false,
-            #   "description": "Comma separated bank_guids to list accounts for.",
-            #   "schema": {
-            #     "type": "string"
-            #   }
-            # },
-            # {
-            #   "name": "customer_guid",
-            #   "in": "query",
-            #   "required": false,
-            #   "description": "Comma separated customer_guids to list accounts for.",
-            #   "schema": {
-            #     "type": "string"
-            #   }
-            # }
+            filter_handler: {:place_in_csv_list, ["guid"]}
+          ],
+          bank_guid: [
+            filter_handler: {:place_in_csv_list, ["bank_guid"]}
+          ],
+          customer_guid: [
+            filter_handler: {:place_in_csv_list, ["customer_guid"]}
           ]
         ]
       ]
@@ -71,16 +50,8 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
     @json
     |> AshJsonApiWrapper.OpenApi.ResourceGenerator.generate(@config)
     |> Enum.map(fn {resource, code} ->
-      IO.puts(code)
       Code.eval_string(code)
       resource
     end)
-
-    Cybrid.Account
-    |> Ash.Query.for_read(:list_accounts)
-    |> Ash.Query.filter(guid == "1c96166bfa20e434962d6f08a96e69ad")
-    # |> Ash.Query.filter(type == :fee)
-    |> Api.read!()
-    |> IO.inspect()
   end
 end

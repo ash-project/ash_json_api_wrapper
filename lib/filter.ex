@@ -79,24 +79,26 @@ defmodule AshJsonApiWrapper.Filter do
         filter,
         field,
         path,
+        type,
         context \\ %{in_an_or?: false, other_branch_instructions: nil}
       )
 
-  def find_place_in_list_filter(nil, _, _, _), do: {:ok, nil}
+  def find_place_in_list_filter(nil, _, _, _, _), do: {:ok, nil}
 
-  def find_place_in_list_filter(%Ash.Filter{expression: expression}, field, path, context) do
-    find_place_in_list_filter(expression, field, path, context)
+  def find_place_in_list_filter(%Ash.Filter{expression: expression}, field, path, type, context) do
+    find_place_in_list_filter(expression, field, path, type, context)
   end
 
   def find_place_in_list_filter(
         %Ash.Query.BooleanExpression{op: op, left: left, right: right} = expr,
         field,
         path,
+        type,
         context
       ) do
-    case find_place_in_list_filter(left, field, path, context) do
+    case find_place_in_list_filter(left, field, path, type, context) do
       {:ok, nil} ->
-        case find_place_in_list_filter(right, field, path, context) do
+        case find_place_in_list_filter(right, field, path, type, context) do
           {:ok, nil} ->
             {:ok, expr, []}
 
@@ -124,18 +126,20 @@ defmodule AshJsonApiWrapper.Filter do
         %Ash.Query.Operator.Eq{left: left, right: %Ash.Query.Ref{} = right} = op,
         field,
         path,
+        type,
         context
       ) do
-    find_place_in_list_filter(%{op | right: left, left: right}, field, path, context)
+    find_place_in_list_filter(%{op | right: left, left: right}, field, path, type, context)
   end
 
   def find_place_in_list_filter(
         %Ash.Query.Operator.In{left: left, right: %Ash.Query.Ref{} = right} = op,
         field,
         path,
+        type,
         context
       ) do
-    find_place_in_list_filter(%{op | right: left, left: right}, field, path, context)
+    find_place_in_list_filter(%{op | right: left, left: right}, field, path, type, context)
   end
 
   def find_place_in_list_filter(
@@ -144,6 +148,7 @@ defmodule AshJsonApiWrapper.Filter do
         },
         field,
         _path,
+        _type,
         _context
       )
       when name != field do
@@ -156,6 +161,7 @@ defmodule AshJsonApiWrapper.Filter do
         },
         field,
         _path,
+        _type,
         _context
       )
       when name != field do
@@ -169,9 +175,10 @@ defmodule AshJsonApiWrapper.Filter do
         },
         field,
         path,
+        type,
         _context
       ) do
-    {:ok, {nil, [{:place_in_list, path, value}]}}
+    {:ok, {nil, [{type, path, value}]}}
   end
 
   def find_place_in_list_filter(
@@ -181,9 +188,10 @@ defmodule AshJsonApiWrapper.Filter do
         },
         field,
         path,
+        type,
         _context
       ) do
-    {:ok, {nil, Enum.map(values, &{:place_in_list, path, &1})}}
+    {:ok, {nil, Enum.map(values, &{type, path, &1})}}
   end
 
   def find_filter_that_uses_get_endpoint(
@@ -259,6 +267,9 @@ defmodule AshJsonApiWrapper.Filter do
                {Ash.Query.BooleanExpression.new(:and, left, right_remaining), uses_endpoint,
                 add_templates([right_templates, templates])}}
             end
+
+          {:ok, nil} ->
+            {:ok, {Ash.Query.BooleanExpression.new(:and, left, right), uses_endpoint, nil}}
         end
 
       {:error, error} ->
