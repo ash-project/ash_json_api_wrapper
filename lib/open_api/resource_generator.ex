@@ -88,6 +88,9 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
               %{"type" => "integer"} ->
                 ":integer"
 
+              %{"type" => "boolean"} ->
+                ":boolean"
+
               other ->
                 raise "Unsupported property: #{inspect(other)}"
             end

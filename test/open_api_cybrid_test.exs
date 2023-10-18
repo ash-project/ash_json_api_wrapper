@@ -1,4 +1,4 @@
-defmodule AshJsonApiWrapper.OpenApiTest do
+defmodule AshJsonApiWrapper.OpenApi.CybridTest do
   use ExUnit.Case
 
   require Ash.Query
