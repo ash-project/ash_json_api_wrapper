@@ -17,7 +17,7 @@ defmodule AshJsonApiWrapper.Endpoint do
   def schema do
     [
       action: [
-        type: {:wrap_list, :atom},
+        type: :atom,
         required: true,
         doc: "The action this path is for"
       ],
