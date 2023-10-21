@@ -18,7 +18,7 @@ defmodule AshJsonApiWrapper.Petstore.Test do
       endpoints do
         base("https://petstore3.swagger.io/api/v3")
 
-        endpoint :find_pets_by_status do
+        endpoint [:find_pets_by_status, :fpbs] do
           path("/pet/findByStatus")
 
           field :status do
@@ -38,6 +38,10 @@ defmodule AshJsonApiWrapper.Petstore.Test do
     actions do
       read(:find_pets_by_status) do
         primary? true
+      end
+
+      read(:fpbs) do
+        primary? false
       end
 
       read(:pet) do
@@ -76,6 +80,11 @@ defmodule AshJsonApiWrapper.Petstore.Test do
     Petstore.Order
     |> Ash.Query.for_read(:find_pets_by_status)
     |> Ash.Query.filter(status == "pending")
+    |> Api.read!()
+
+    Petstore.Order
+    |> Ash.Query.for_read(:fpbs)
+    |> Ash.Query.filter(status == "available")
     |> Api.read!()
 
     Petstore.Order
