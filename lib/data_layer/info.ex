@@ -48,7 +48,7 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
     resource
     |> Extension.get_entities([:json_api_wrapper, :endpoints])
     |> Enum.reject(& &1.get_for)
-    |> Enum.find(&(&1.action == action))
+    |> Enum.find(&Enum.member?(&1.action, action))
     |> case do
       nil ->
         default_endpoint
@@ -69,7 +69,7 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
     resource
     |> Extension.get_entities([:json_api_wrapper, :endpoints])
     |> Enum.find(fn endpoint ->
-      endpoint.action == action && endpoint.get_for == get_for
+      Enum.member?(endpoint.action, action) && endpoint.get_for == get_for
     end)
     |> case do
       nil ->

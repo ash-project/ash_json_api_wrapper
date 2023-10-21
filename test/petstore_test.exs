@@ -20,19 +20,28 @@ defmodule AshJsonApiWrapper.Petstore.Test do
 
         endpoint :find_pets_by_status do
           path("/pet/findByStatus")
+
+          field :status do
+            filter_handler(:simple)
+          end
+        end
+
+        get_endpoint :pet, :id do
+          path("/pet/:id")
         end
       end
 
       fields do
-        field :status do
-          filter_handler(:simple)
-        end
       end
     end
 
     actions do
       read(:find_pets_by_status) do
         primary? true
+      end
+
+      read(:pet) do
+        primary? false
       end
     end
 
@@ -42,7 +51,7 @@ defmodule AshJsonApiWrapper.Petstore.Test do
         allow_nil?(false)
       end
 
-      # attribute(:category, :string) 
+      # attribute(:category, :string)
       attribute(:name, :string)
       attribute(:photo_urls, :string)
 
@@ -65,7 +74,13 @@ defmodule AshJsonApiWrapper.Petstore.Test do
 
   test "it works" do
     Petstore.Order
+    |> Ash.Query.for_read(:find_pets_by_status)
     |> Ash.Query.filter(status == "pending")
+    |> Api.read!()
+
+    Petstore.Order
+    |> Ash.Query.for_read(:pet)
+    |> Ash.Query.filter(id == 1)
     |> Api.read!()
   end
 end
