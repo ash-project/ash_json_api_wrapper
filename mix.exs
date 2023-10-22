@@ -141,7 +141,7 @@ defmodule AshJsonApiWrapper.MixProject do
       {:ex_check, "~> 0.12.0", only: :dev},
       {:credo, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:sobelow, ">= 0.0.0", only: :dev, runtime: false},
+      {:sobelow, "~> 0.13", only: :dev, runtime: false},
       {:git_ops, "~> 2.5", only: :dev},
       {:excoveralls, "~> 0.13.0", only: [:dev, :test]},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},

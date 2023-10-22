@@ -650,10 +650,10 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp runtime_filter({:ok, results}, query) do
-    if not is_nil(query.runtime_filter) do
-      Ash.Filter.Runtime.filter_matches(query.api, results, query.runtime_filter)
-    else
+    if is_nil(query.runtime_filter) do
       {:ok, results}
+    else
+      Ash.Filter.Runtime.filter_matches(query.api, results, query.runtime_filter)
     end
   end
 
@@ -707,7 +707,7 @@ defmodule AshJsonApiWrapper.DataLayer do
 
   defp make_request(resource, query) do
     # log_send(path, query)
-    IO.inspect(query.query_params)
+    # IO.inspect(query.query_params)
 
     AshJsonApiWrapper.DataLayer.Info.tesla(resource).get(query.path,
       body: query.body,

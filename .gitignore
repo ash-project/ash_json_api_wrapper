@@ -24,3 +24,6 @@ ash_json_api_wrapper-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# OS X folder metadata
+.DS_Store
