@@ -133,7 +133,7 @@ defmodule AshJsonApiWrapper.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ash, ash_version("2.11.0-rc.3")},
+      {:ash, "~> 2.15"},
       {:tesla, "~> 1.7"},
       {:exjsonpath, "~> 0.1"},
       # Dev/Test dependencies
