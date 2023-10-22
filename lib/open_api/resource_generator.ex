@@ -1,4 +1,6 @@
 defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
+  @moduledoc "Generates resources from an open api specification"
+
   def generate(json, main_config) do
     main_config[:resources]
     |> Enum.map(fn {resource, config} ->

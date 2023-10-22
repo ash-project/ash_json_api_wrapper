@@ -1,4 +1,8 @@
 defmodule AshJsonApiWrapper.DataLayer do
+  @moduledoc """
+  A data layer for wrapping external JSON APIs.
+  """
+
   @field %Spark.Dsl.Entity{
     name: :field,
     target: AshJsonApiWrapper.Field,
@@ -127,6 +131,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     transformers: [AshJsonApiWrapper.DataLayer.Transformers.SetEndpointDefaults]
 
   defmodule Query do
+    @moduledoc false
     defstruct [
       :api,
       :context,

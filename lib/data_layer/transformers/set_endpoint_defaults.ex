@@ -1,4 +1,5 @@
 defmodule AshJsonApiWrapper.DataLayer.Transformers.SetEndpointDefaults do
+  @moduledoc false
   use Spark.Dsl.Transformer
 
   alias Spark.Dsl.Transformer

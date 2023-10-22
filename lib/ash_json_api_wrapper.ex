@@ -1,5 +1,6 @@
 defmodule AshJsonApiWrapper do
   @moduledoc """
+  Functions for interacting with AshJsonApiWrapper changesets and queries.
   """
 
   @spec set_body_param(query_or_changeset, String.t(), any) :: query_or_changeset
