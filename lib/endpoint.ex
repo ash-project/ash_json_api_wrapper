@@ -9,7 +9,8 @@ defmodule AshJsonApiWrapper.Endpoint do
     :get_for,
     :runtime_sort?,
     :limit_with,
-    :paginator
+    :paginator,
+    :__identifier__
   ]
 
   @type t :: %__MODULE__{}

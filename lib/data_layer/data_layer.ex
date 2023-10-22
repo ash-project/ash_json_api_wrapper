@@ -21,6 +21,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     name: :endpoint,
     target: AshJsonApiWrapper.Endpoint,
     schema: AshJsonApiWrapper.Endpoint.schema(),
+    identifier: {:auto, :unique_integer},
     docs: """
     Configure the endpoint that a given action will use.
 

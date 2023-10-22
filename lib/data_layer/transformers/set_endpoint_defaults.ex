@@ -24,8 +24,7 @@ defmodule AshJsonApiWrapper.DataLayer.Transformers.SetEndpointDefaults do
              paginator: endpoint.paginator || base_paginator,
              fields:
                Enum.reject(base_fields, &(&1.name in endpoint_field_names)) ++ endpoint.fields
-         },
-         &(&1.action == endpoint.action)
+         }
        )}
     end)
   end
