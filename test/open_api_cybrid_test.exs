@@ -1,7 +1,7 @@
 defmodule AshJsonApiWrapper.OpenApi.CybridTest do
   use ExUnit.Case
-
   require Ash.Query
+  @moduletag :oapi_cybrid
 
   @json "test/support/cybrid.json" |> File.read!() |> Jason.decode!()
 
@@ -38,13 +38,7 @@ defmodule AshJsonApiWrapper.OpenApi.CybridTest do
     ]
   ]
 
-  defmodule Api do
-    use Ash.Api
-
-    resources do
-      allow_unregistered? true
-    end
-  end
+ 
 
   test "it does stuff" do
     @json

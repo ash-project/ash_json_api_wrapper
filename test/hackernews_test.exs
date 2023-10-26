@@ -6,14 +6,15 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   defmodule TopStory do
     @moduledoc false
     use Ash.Resource,
-      data_layer: AshJsonApiWrapper.DataLayer
+      data_layer: AshJsonApiWrapper.DataLayer,
+      validate_api_inclusion?: false
 
     json_api_wrapper do
       endpoints do
         base "https://hacker-news.firebaseio.com/v0/"
 
         endpoint :read do
-          limit_with "limitToFirst"
+          limit_with {:param, "limitToFirst"}
           path "topstories.json"
         end
       end
@@ -59,7 +60,8 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   defmodule Story do
     @moduledoc false
     use Ash.Resource,
-      data_layer: AshJsonApiWrapper.DataLayer
+      data_layer: AshJsonApiWrapper.DataLayer,
+      validate_api_inclusion?: false
 
     calculations do
       calculate(:short_url, :string, ShortUrl)
@@ -110,7 +112,8 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   defmodule User do
     @moduledoc false
     use Ash.Resource,
-      data_layer: AshJsonApiWrapper.DataLayer
+      data_layer: AshJsonApiWrapper.DataLayer,
+      validate_api_inclusion?: false
 
     attributes do
       attribute :id, :string do
@@ -142,7 +145,7 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
 
   defmodule Api do
     @moduledoc false
-    use Ash.Api
+    use Ash.Api, validate_config_inclusion?: false
 
     resources do
       allow_unregistered?(true)
