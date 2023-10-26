@@ -1,7 +1,7 @@
 defmodule AshJsonApiWrapper.OpenApi.PetstoreTest do
   use ExUnit.Case
-
   require Ash.Query
+  @moduletag :oapi_petstore
 
   @json "test/support/pet_store.json" |> File.read!() |> Jason.decode!()
 
@@ -17,7 +17,7 @@ defmodule AshJsonApiWrapper.OpenApi.PetstoreTest do
     tesla: TestingTesla,
     endpoint: "https://petstore3.swagger.io/api/v3",
     resources: [
-      "Petstore.Order": [
+      Petstore: [
         path: "/store/order/{orderId}",
         object_type: "components.schemas.Order",
         primary_key: "id",
@@ -30,14 +30,6 @@ defmodule AshJsonApiWrapper.OpenApi.PetstoreTest do
       ]
     ]
   ]
-
-  defmodule Api do
-    use Ash.Api
-
-    resources do
-      allow_unregistered? true
-    end
-  end
 
   test "it does stuff" do
     @json

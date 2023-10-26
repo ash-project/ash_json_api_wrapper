@@ -330,7 +330,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   @impl true
-  def set_context(_resource, query, context) do
+  def set_context(resource, query, context) do
     params = context[:data_layer][:query_params] || %{}
     headers = Map.to_list(context[:data_layer][:headers] || %{})
 
@@ -343,6 +343,7 @@ defmodule AshJsonApiWrapper.DataLayer do
          headers: headers,
          api: query.api,
          action: action,
+         endpoint: AshJsonApiWrapper.DataLayer.Info.endpoint(resource, action.name),
          context: context
      }}
   end
@@ -668,7 +669,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp do_sort({:ok, results}, %{sort: sort}) when sort not in [nil, []] do
-    Ash.Sort.runtime_sort(results, sort)
+    Ash.Sort.runtime_sort(results, sort, [])
   end
 
   defp do_sort(other, _), do: other

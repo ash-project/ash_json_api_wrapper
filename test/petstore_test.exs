@@ -1,7 +1,6 @@
 defmodule AshJsonApiWrapper.Petstore.Test do
   use ExUnit.Case
   require Ash.Query
-
   @moduletag :petstore
 
   defmodule TestingTesla do
@@ -9,8 +8,10 @@ defmodule AshJsonApiWrapper.Petstore.Test do
     # plug Tesla.Middleware.Logger
   end
 
-  defmodule Petstore.Order do
-    use Ash.Resource, data_layer: AshJsonApiWrapper.DataLayer
+  defmodule Petstore do
+    use Ash.Resource,
+      data_layer: AshJsonApiWrapper.DataLayer,
+      validate_api_inclusion?: false
 
     json_api_wrapper do
       tesla(TestingTesla)
@@ -18,7 +19,7 @@ defmodule AshJsonApiWrapper.Petstore.Test do
       endpoints do
         base("https://petstore3.swagger.io/api/v3")
 
-        endpoint [:find_pets_by_status, :fpbs] do
+        endpoint [:find_pets_by_status, :by_status] do
           path("/pet/findByStatus")
 
           field :status do
@@ -37,11 +38,11 @@ defmodule AshJsonApiWrapper.Petstore.Test do
 
     actions do
       read(:find_pets_by_status) do
-        primary? true
+        primary? false
       end
 
-      read(:fpbs) do
-        primary? false
+      read(:by_status) do
+        primary? true
       end
 
       read(:pet) do
@@ -68,8 +69,7 @@ defmodule AshJsonApiWrapper.Petstore.Test do
   end
 
   defmodule Api do
-    @moduledoc false
-    use Ash.Api
+    use Ash.Api, validate_config_inclusion?: false
 
     resources do
       allow_unregistered?(true)
@@ -77,19 +77,19 @@ defmodule AshJsonApiWrapper.Petstore.Test do
   end
 
   test "it works" do
-    Petstore.Order
+    Petstore
     |> Ash.Query.for_read(:find_pets_by_status)
     |> Ash.Query.filter(status == "pending")
     |> Api.read!()
 
-    Petstore.Order
-    |> Ash.Query.for_read(:fpbs)
+    Petstore
+    |> Ash.Query.for_read(:by_status)
     |> Ash.Query.filter(status == "available")
     |> Api.read!()
 
-    Petstore.Order
+    Petstore
     |> Ash.Query.for_read(:pet)
-    |> Ash.Query.filter(id == 1)
+    |> Ash.Query.filter(id == 10)
     |> Api.read!()
   end
 end
