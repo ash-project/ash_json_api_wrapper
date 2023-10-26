@@ -17,7 +17,7 @@ defmodule AshJsonApiWrapper.OpenApi.PetstoreTest do
     tesla: TestingTesla,
     endpoint: "https://petstore3.swagger.io/api/v3",
     resources: [
-      "Petstore": [
+      Petstore: [
         path: "/store/order/{orderId}",
         object_type: "components.schemas.Order",
         primary_key: "id",
@@ -30,8 +30,6 @@ defmodule AshJsonApiWrapper.OpenApi.PetstoreTest do
       ]
     ]
   ]
-
-
 
   test "it does stuff" do
     @json

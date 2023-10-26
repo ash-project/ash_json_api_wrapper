@@ -9,8 +9,9 @@ defmodule AshJsonApiWrapper.Petstore.Test do
   end
 
   defmodule Petstore do
-    use Ash.Resource, data_layer: AshJsonApiWrapper.DataLayer, 
-    validate_api_inclusion?: false
+    use Ash.Resource,
+      data_layer: AshJsonApiWrapper.DataLayer,
+      validate_api_inclusion?: false
 
     json_api_wrapper do
       tesla(TestingTesla)

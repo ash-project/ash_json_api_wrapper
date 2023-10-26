@@ -8,11 +8,12 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
   defmodule CustomPaginator do
     use AshJsonApiWrapper.Paginator
 
-    def cursor() do
+    def cursor do
       case :ets.whereis(:cursor) do
         :undefined ->
           :ets.new(:cursor, [:set, :protected, :named_table])
           |> :ets.insert({self(), 1})
+
           1
 
         _ ->
@@ -21,11 +22,11 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
       end
     end
 
-    def increment_cursor() do
+    def increment_cursor do
       :ets.insert(:cursor, {self(), cursor() + 1})
     end
 
-    def reset_cursor() do
+    def reset_cursor do
       :ets.insert(:cursor, {self(), 1})
     end
 

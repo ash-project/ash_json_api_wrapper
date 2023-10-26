@@ -38,8 +38,6 @@ defmodule AshJsonApiWrapper.OpenApi.CybridTest do
     ]
   ]
 
- 
-
   test "it does stuff" do
     @json
     |> AshJsonApiWrapper.OpenApi.ResourceGenerator.generate(@config)
