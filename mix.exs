@@ -134,7 +134,7 @@ defmodule AshJsonApiWrapper.MixProject do
   defp deps do
     [
       {:ash, ash_version("~> 2.15")},
-      {:tesla, "~> 1.8"},
+      {:tesla, "~> 1.7"},
       {:exjsonpath, "~> 0.1"},
       # Dev/Test dependencies
       {:ex_doc, "~> 0.22", only: :dev, runtime: false},
