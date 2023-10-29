@@ -2,6 +2,10 @@ defmodule AshJsonApiWrapper.Paginator.ContinuationProperty do
   @moduledoc "A paginator that uses a continuation property to paginate"
   use AshJsonApiWrapper.Paginator
 
+  def start(_opts) do
+    {:ok, %{}}
+  end
+
   def continue(_response, [], _), do: :halt
 
   def continue(response, _entities, opts) do
