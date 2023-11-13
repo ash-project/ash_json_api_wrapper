@@ -1,14 +1,36 @@
 defmodule AshJsonApiWrapper.CustomPagination.Test do
   use ExUnit.Case
   require Ash.Query
+  import Mox
   @moduletag :custom_pagination
+
+  # Make sure mocks are verified when the test exits
+  setup :verify_on_exit!
+
+  defmodule TestingTesla do
+    use Tesla
+
+    adapter(AshJsonApiWrapper.MockAdapter)
+    # plug(Tesla.Middleware.Logger)
+
+    plug(Tesla.Middleware.Retry,
+      delay: 2000,
+      max_retries: 5,
+      max_delay: 4_000,
+      should_retry: fn
+        {:ok, %{status: status}} when status in [429] -> true
+        {:ok, _} -> false
+        {:error, _} -> true
+      end
+    )
+  end
 
   # ── Custom paginator ──
 
   defmodule CustomPaginator do
     use AshJsonApiWrapper.Paginator
 
-    def cursor do
+    defp cursor do
       case :ets.whereis(:cursor) do
         :undefined ->
           :ets.new(:cursor, [:set, :protected, :named_table])
@@ -22,22 +44,27 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
       end
     end
 
-    def increment_cursor do
+    defp increment_cursor do
       :ets.insert(:cursor, {self(), cursor() + 1})
     end
 
-    def reset_cursor do
+    defp reset_cursor do
+      cursor()
       :ets.insert(:cursor, {self(), 1})
     end
 
-    def continue(_response, [], _) do
+    def start(_opts) do
       reset_cursor()
+      {:ok, %{params: %{"p" => 1}}}
+    end
+
+    def continue(_response, [], _) do
       :halt
     end
 
     def continue(_response, _entities, _opts) do
       increment_cursor()
-      {:ok, %{params: %{:p => cursor()}}}
+      {:ok, %{params: %{"p" => cursor()}}}
     end
   end
 
@@ -49,7 +76,7 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
       validate_api_inclusion?: false
 
     json_api_wrapper do
-      tesla(Tesla)
+      tesla(TestingTesla)
 
       endpoints do
         base("https://65383945a543859d1bb1528e.mockapi.io/api/v1")
@@ -99,13 +126,50 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
     Application.put_env(:ash, :validate_api_resource_inclusion?, false)
     Application.put_env(:ash, :validate_api_config_inclusion?, false)
 
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:call, 4, fn env, _options ->
+      case env.query do
+        %{"l" => 3, "p" => 2} ->
+          {:ok, %Tesla.Env{env | status: 200, body: "[]"}}
+
+        %{"l" => 3, "p" => 1} ->
+          {:ok,
+           %Tesla.Env{
+             env
+             | status: 200,
+               body: """
+               [
+                {"name": "Kendra Ernser", "id":"1"},
+                {"name": "Max Hartman", "id":"2"},
+                {"name": "John Benton", "id":"3"}
+               ]
+               """
+           }}
+
+        query ->
+          {:ok,
+           %Tesla.Env{
+             env
+             | status: 500,
+               body: "Unexpected parameters: #{query |> Kernel.inspect()}"
+           }}
+      end
+    end)
+
     users =
       Users
       |> Ash.Query.for_read(:list_users)
-      |> Api.read!(page: [limit: 99])
+      # |> Ash.Query.limit(2)
+      |> Api.read!(page: [limit: 2, offset: 0])
 
-    user_count = users.results |> Enum.count()
+    users2 =
+      Users
+      |> Ash.Query.for_read(:list_users)
+      |> Api.read!(page: [limit: 2, offset: 1])
 
-    assert(user_count == 99)
+    users_count = users.results |> Enum.count()
+    users2_count = users2.results |> Enum.count()
+
+    assert(users_count == users2_count)
   end
 end

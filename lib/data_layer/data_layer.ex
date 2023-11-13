@@ -617,20 +617,27 @@ defmodule AshJsonApiWrapper.DataLayer do
             Logger.warning(
               "ash_json_api_wrapper does not support limits with offsets yet, and so they will both be applied after."
             )
-
-            query
-          else
-            case endpoint.limit_with do
-              {:param, param} ->
-                %{
-                  query
-                  | query_params: Map.put(query.query_params || %{}, param, query.limit)
-                }
-
-              _ ->
-                query
-            end
           end
+
+          case endpoint.limit_with do
+            {:param, param} ->
+              %{
+                query
+                | query_params: Map.put(query.query_params || %{}, param, query.limit)
+              }
+
+            _ ->
+              query
+          end
+        else
+          query
+        end
+
+      query =
+        if endpoint.paginator do
+          %{paginator: {module, opts}} = endpoint
+          {:ok, instructions} = module.start(opts)
+          apply_instructions(query, instructions)
         else
           query
         end

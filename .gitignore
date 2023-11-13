@@ -27,3 +27,6 @@ ash_json_api_wrapper-*.tar
 
 # OS X folder metadata
 .DS_Store
+
+# VSCode settings
+.vscode/*
