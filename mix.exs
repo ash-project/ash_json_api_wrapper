@@ -142,7 +142,7 @@ defmodule AshJsonApiWrapper.MixProject do
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:git_ops, "~> 2.5", only: :dev},
-      {:excoveralls, "~> 0.13.0", only: [:dev, :test]},
+      {:excoveralls, "~> 0.18.1", only: [:dev, :test]},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:parse_trans, "3.3.0", only: [:dev, :test], override: true},
       {:mox, "~> 1.0", only: :test}
