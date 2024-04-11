@@ -112,8 +112,7 @@ defmodule AshJsonApiWrapper.MixProject do
   defp aliases do
     [
       sobelow: "sobelow --skip",
-      credo: "credo --strict",
-      docs: ["docs", "ash.replace_doc_links"],
+      docs: ["docs", "spark.replace_doc_links"],
       "spark.formatter": "spark.formatter --extensions AshJsonApiWrapper.DataLayer"
     ]
   end
@@ -139,9 +138,9 @@ defmodule AshJsonApiWrapper.MixProject do
       # Dev/Test dependencies
       {:ex_doc, "~> 0.22", only: :dev, runtime: false},
       {:ex_check, "~> 0.12.0", only: :dev},
-      {:credo, ">= 0.0.0", only: :dev, runtime: false},
+      {:credo, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
-      {:sobelow, "~> 0.13", only: :dev, runtime: false},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:git_ops, "~> 2.5", only: :dev},
       {:excoveralls, "~> 0.13.0", only: [:dev, :test]},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
