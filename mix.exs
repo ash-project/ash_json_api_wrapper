@@ -19,11 +19,6 @@ defmodule AshJsonApiWrapper.MixProject do
       package: package(),
       elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [plt_add_apps: [:ash]],
-      test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.github": :test
-      ],
       docs: docs(),
       description: @description,
       source_url: "https://github.com/ash-project/ash_json_api",
@@ -142,10 +137,10 @@ defmodule AshJsonApiWrapper.MixProject do
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:git_ops, "~> 2.5", only: :dev},
-      {:excoveralls, "~> 0.18.1", only: [:dev, :test]},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:parse_trans, "3.4.2", only: [:dev, :test], override: true},
-      {:mox, "~> 1.0", only: :test}
+      {:mox, "~> 1.0", only: :test},
+      {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false}
     ]
   end
 
