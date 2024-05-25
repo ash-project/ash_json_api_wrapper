@@ -11,7 +11,8 @@ defmodule AshJsonApiWrapper.Petstore.Test do
   defmodule Petstore do
     use Ash.Resource,
       data_layer: AshJsonApiWrapper.DataLayer,
-      validate_api_inclusion?: false
+      domain: AshJsonApiWrapper.Petstore.Test.Domain,
+      validate_domain_inclusion?: false
 
     json_api_wrapper do
       tesla(TestingTesla)
@@ -68,8 +69,8 @@ defmodule AshJsonApiWrapper.Petstore.Test do
     end
   end
 
-  defmodule Api do
-    use Ash.Api, validate_config_inclusion?: false
+  defmodule Domain do
+    use Ash.Domain, validate_config_inclusion?: false
 
     resources do
       allow_unregistered?(true)
@@ -80,16 +81,16 @@ defmodule AshJsonApiWrapper.Petstore.Test do
     Petstore
     |> Ash.Query.for_read(:find_pets_by_status)
     |> Ash.Query.filter(status == "pending")
-    |> Api.read!()
+    |> Ash.read!()
 
     Petstore
     |> Ash.Query.for_read(:by_status)
     |> Ash.Query.filter(status == "available")
-    |> Api.read!()
+    |> Ash.read!()
 
     Petstore
     |> Ash.Query.for_read(:pet)
     |> Ash.Query.filter(id == 10)
-    |> Api.read!()
+    |> Ash.read!()
   end
 end

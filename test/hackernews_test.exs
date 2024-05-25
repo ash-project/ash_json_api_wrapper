@@ -6,8 +6,9 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   defmodule TopStory do
     @moduledoc false
     use Ash.Resource,
+      domain: AshJsonApiWrapper.Hackernews.Test.Domain,
       data_layer: AshJsonApiWrapper.DataLayer,
-      validate_api_inclusion?: false
+      validate_domain_inclusion?: false
 
     json_api_wrapper do
       endpoints do
@@ -44,7 +45,7 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
 
   defmodule ShortUrl do
     @moduledoc false
-    use Ash.Calculation
+    use Ash.Resource.Calculation
 
     def calculate(records, _, _) do
       Enum.map(records, fn record ->
@@ -60,8 +61,9 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   defmodule Story do
     @moduledoc false
     use Ash.Resource,
+      domain: AshJsonApiWrapper.Hackernews.Test.Domain,
       data_layer: AshJsonApiWrapper.DataLayer,
-      validate_api_inclusion?: false
+      validate_domain_inclusion?: false
 
     calculations do
       calculate(:short_url, :string, ShortUrl)
@@ -112,8 +114,9 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   defmodule User do
     @moduledoc false
     use Ash.Resource,
+      domain: AshJsonApiWrapper.Hackernews.Test.Domain,
       data_layer: AshJsonApiWrapper.DataLayer,
-      validate_api_inclusion?: false
+      validate_domain_inclusion?: false
 
     attributes do
       attribute :id, :string do
@@ -143,9 +146,9 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
     end
   end
 
-  defmodule Api do
+  defmodule Domain do
     @moduledoc false
-    use Ash.Api, validate_config_inclusion?: false
+    use Ash.Domain, validate_config_inclusion?: false
 
     resources do
       allow_unregistered?(true)
@@ -157,7 +160,7 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
              TopStory
              |> Ash.Query.limit(1)
              |> Ash.Query.load(story: :user)
-             |> Api.read!()
+             |> Domain.read!()
              |> Enum.map(& &1.story)
 
     assert is_binary(top_story.url)

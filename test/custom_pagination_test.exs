@@ -72,8 +72,9 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
 
   defmodule Users do
     use Ash.Resource,
+      domain: AshJsonApiWrapper.CustomPagination.Test.Domain,
       data_layer: AshJsonApiWrapper.DataLayer,
-      validate_api_inclusion?: false
+      validate_domain_inclusion?: false
 
     json_api_wrapper do
       tesla(TestingTesla)
@@ -112,8 +113,8 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
     end
   end
 
-  defmodule Api do
-    use Ash.Api, validate_config_inclusion?: false
+  defmodule Domain do
+    use Ash.Domain, validate_config_inclusion?: false
 
     resources do
       allow_unregistered?(true)
@@ -160,12 +161,12 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
       Users
       |> Ash.Query.for_read(:list_users)
       # |> Ash.Query.limit(2)
-      |> Api.read!(page: [limit: 2, offset: 0])
+      |> Ash.read!(page: [limit: 2, offset: 0])
 
     users2 =
       Users
       |> Ash.Query.for_read(:list_users)
-      |> Api.read!(page: [limit: 2, offset: 1])
+      |> Ash.read!(page: [limit: 2, offset: 1])
 
     users_count = users.results |> Enum.count()
     users2_count = users2.results |> Enum.count()

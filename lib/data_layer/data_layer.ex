@@ -133,7 +133,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   defmodule Query do
     @moduledoc false
     defstruct [
-      :api,
+      :domain,
       :context,
       :headers,
       :action,
@@ -206,8 +206,8 @@ defmodule AshJsonApiWrapper.DataLayer do
   def can?(_, _), do: false
 
   @impl true
-  def resource_to_query(resource, api \\ nil) do
-    %Query{path: AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource), api: api}
+  def resource_to_query(resource, domain \\ nil) do
+    %Query{path: AshJsonApiWrapper.DataLayer.Info.endpoint_base(resource), domain: domain}
   end
 
   @impl true
@@ -341,7 +341,7 @@ defmodule AshJsonApiWrapper.DataLayer do
        query
        | query_params: params,
          headers: headers,
-         api: query.api,
+         domain: query.domain,
          action: action,
          endpoint: AshJsonApiWrapper.DataLayer.Info.endpoint(resource, action.name),
          context: context
@@ -667,7 +667,7 @@ defmodule AshJsonApiWrapper.DataLayer do
     if is_nil(query.runtime_filter) do
       {:ok, results}
     else
-      Ash.Filter.Runtime.filter_matches(query.api, results, query.runtime_filter)
+      Ash.Filter.Runtime.filter_matches(query.domain, results, query.runtime_filter)
     end
   end
 

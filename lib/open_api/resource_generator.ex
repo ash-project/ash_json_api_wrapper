@@ -2,7 +2,7 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
   @moduledoc "Generates resources from an open api specification"
 
   # sobelow_skip ["DOS.StringToAtom"]
-  def generate(json, main_config) do
+  def generate(json, domain, main_config) do
     main_config[:resources]
     |> Enum.map(fn {resource, config} ->
       endpoints =
@@ -158,7 +158,7 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
       code =
         """
         defmodule #{resource} do
-          use Ash.Resource, data_layer: AshJsonApiWrapper.DataLayer
+          use Ash.Resource, domain: #{inspect(domain)}, data_layer: AshJsonApiWrapper.DataLayer
 
           json_api_wrapper do
             #{tesla}

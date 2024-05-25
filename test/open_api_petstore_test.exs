@@ -31,9 +31,18 @@ defmodule AshJsonApiWrapper.OpenApi.PetstoreTest do
     ]
   ]
 
+  defmodule Domain do
+    use Ash.Domain,
+      validate_config_inclusion?: false
+
+    resources do
+      allow_unregistered? true
+    end
+  end
+
   test "it does stuff" do
     @json
-    |> AshJsonApiWrapper.OpenApi.ResourceGenerator.generate(@config)
+    |> AshJsonApiWrapper.OpenApi.ResourceGenerator.generate(Domain, @config)
     |> Enum.map(fn {resource, code} ->
       Code.eval_string(code)
       resource
