@@ -131,6 +131,7 @@ defmodule AshJsonApiWrapper.MixProject do
       {:tesla, "~> 1.7"},
       {:exjsonpath, "~> 0.1"},
       # Dev/Test dependencies
+      {:igniter, "~> 0.5", optional: true},
       {:ex_doc, "~> 0.22", only: :dev, runtime: false},
       {:ex_check, "~> 0.16.0", only: :dev},
       {:credo, ">= 0.0.0", only: [:dev, :test], runtime: false},

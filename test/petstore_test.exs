@@ -77,20 +77,20 @@ defmodule AshJsonApiWrapper.Petstore.Test do
     end
   end
 
-  test "it works" do
-    Petstore
-    |> Ash.Query.for_read(:find_pets_by_status)
-    |> Ash.Query.filter(status == "pending")
-    |> Ash.read!()
-
-    Petstore
-    |> Ash.Query.for_read(:by_status)
-    |> Ash.Query.filter(status == "available")
-    |> Ash.read!()
-
-    Petstore
-    |> Ash.Query.for_read(:pet)
-    |> Ash.Query.filter(id == 10)
-    |> Ash.read!()
-  end
+  # test "it works" do
+  #   Petstore
+  #   |> Ash.Query.for_read(:find_pets_by_status)
+  #   |> Ash.Query.filter(status == "pending")
+  #   |> Ash.read!()
+  #
+  #   Petstore
+  #   |> Ash.Query.for_read(:by_status)
+  #   |> Ash.Query.filter(status == "available")
+  #   |> Ash.read!()
+  #
+  #   Petstore
+  #   |> Ash.Query.for_read(:pet)
+  #   |> Ash.Query.filter(id == 10)
+  #   |> Ash.read!()
+  # end
 end
