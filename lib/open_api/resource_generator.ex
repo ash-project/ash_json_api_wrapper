@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
   @moduledoc "Generates resources from an open api specification"
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.Helpers do
   @moduledoc false
   def put_at_path(_, [], value), do: value

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.Errors.InvalidData do
   @moduledoc "Used when an invalid value is present in the response for a given attribute"
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.DataLayer do
   @moduledoc """
   A data layer for wrapping external JSON APIs.

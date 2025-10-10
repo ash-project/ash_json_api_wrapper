@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.Paginator.ContinuationProperty do
   @moduledoc "A paginator that uses a continuation property to paginate"
   use AshJsonApiWrapper.Paginator

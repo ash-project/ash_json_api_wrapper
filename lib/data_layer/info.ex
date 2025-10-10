@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.DataLayer.Info do
   @moduledoc "Introspection helpers for AshJsonApiWrapper.DataLayer"
 

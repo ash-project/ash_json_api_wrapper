@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.Paginator do
   @moduledoc """
   Behavior for scanning pages of a paginated endpoint.

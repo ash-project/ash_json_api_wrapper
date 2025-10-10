@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.MixProject do
   use Mix.Project
 
@@ -114,12 +118,21 @@ defmodule AshJsonApiWrapper.MixProject do
 
   defp package do
     [
-      name: :ash_json_api_wrapper,
+      maintainers: [
+        "Zach Daniel <zach@zachdaniel.dev>"
+      ],
       licenses: ["MIT"],
       files: ~w(lib .formatter.exs mix.exs README* LICENSE*
       CHANGELOG* documentation),
       links: %{
-        GitHub: "https://github.com/ash-project/ash_json_api_wrapper"
+        "GitHub" => "https://github.com/ash-project/ash_json_api_wrapper",
+        "Changelog" =>
+          "https://github.com/ash-project/ash_json_api_wrapper/blob/main/CHANGELOG.md",
+        "Discord" => "https://discord.gg/HTHRaaVPUc",
+        "Website" => "https://ash-hq.org",
+        "Forum" => "https://elixirforum.com/c/elixir-framework-forums/ash-framework-forum",
+        "REUSE Compliance" =>
+          "https://api.reuse.software/info/github.com/ash-project/ash_json_api_wrapper"
       }
     ]
   end

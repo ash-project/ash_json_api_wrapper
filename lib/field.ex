@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshJsonApiWrapper.Field do
   @moduledoc "Represents a field mapped in the target api."
   defstruct [:name, :path, :write_path, :filter_handler]
