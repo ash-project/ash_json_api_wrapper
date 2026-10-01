@@ -146,7 +146,7 @@ defmodule AshJsonApiWrapper.MixProject do
       # Dev/Test dependencies
       {:igniter, "~> 0.5", optional: true},
       {:ex_doc, "~> 0.22", only: :dev, runtime: false},
-      {:ex_check, "~> 0.16.0", only: :dev},
+      {:ex_check, "~> 0.17.0", only: :dev},
       {:credo, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:dialyxir, ">= 0.0.0", only: :dev, runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
