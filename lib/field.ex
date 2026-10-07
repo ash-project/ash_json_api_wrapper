@@ -4,7 +4,7 @@
 
 defmodule AshJsonApiWrapper.Field do
   @moduledoc "Represents a field mapped in the target api."
-  defstruct [:name, :path, :write_path, :filter_handler]
+  defstruct [:name, :path, :write_path, :filter_handler, __spark_metadata__: nil]
 
   @type t :: %__MODULE__{}
 
