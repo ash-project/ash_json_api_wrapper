@@ -14,7 +14,8 @@ defmodule AshJsonApiWrapper.Endpoint do
     :runtime_sort?,
     :limit_with,
     :paginator,
-    :__identifier__
+    :__identifier__,
+    __spark_metadata__: nil
   ]
 
   @type t :: %__MODULE__{}

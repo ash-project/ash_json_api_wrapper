@@ -162,9 +162,10 @@ defmodule AshJsonApiWrapper.Hackernews.Test do
   test "it works" do
     assert [top_story] =
              TopStory
+             |> Ash.Query.set_context(%{data_layer: %{query_params: %{"orderBy" => "\"$key\""}}})
              |> Ash.Query.limit(1)
              |> Ash.Query.load(story: :user)
-             |> Domain.read!()
+             |> Ash.read!()
              |> Enum.map(& &1.story)
 
     assert is_binary(top_story.url)

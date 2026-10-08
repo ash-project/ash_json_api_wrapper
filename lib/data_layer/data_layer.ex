@@ -680,7 +680,7 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp do_sort({:ok, results}, %{sort: sort}) when sort not in [nil, []] do
-    Ash.Sort.runtime_sort(results, sort, [])
+    {:ok, Ash.Sort.runtime_sort(results, sort, [])}
   end
 
   defp do_sort(other, _), do: other
