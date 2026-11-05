@@ -9,16 +9,14 @@ defmodule AshJsonApiWrapper.OpenApi.PetstoreTest do
 
   @json "test/support/pet_store.json" |> File.read!() |> Jason.decode!()
 
-  defmodule TestingTesla do
-    use Tesla
-
-    # plug(Tesla.Middleware.Headers, [
-    #   {"authorization", "Bearer xxx"}
-    # ])
+  defmodule TestingReq do
+    def new do
+      AshJsonApiWrapper.DefaultReq.new()
+    end
   end
 
   @config [
-    tesla: TestingTesla,
+    req: TestingReq,
     endpoint: "https://petstore3.swagger.io/api/v3",
     resources: [
       Petstore: [

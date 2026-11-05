@@ -118,11 +118,11 @@ defmodule AshJsonApiWrapper.DataLayer do
         A module implementing the `AshJSonApiWrapper.Paginator` behaviour, to allow scanning pages when reading.
         """
       ],
-      tesla: [
+      req: [
         type: :atom,
-        default: AshJsonApiWrapper.DefaultTesla,
+        default: AshJsonApiWrapper.DefaultReq,
         doc: """
-        The Tesla module to use.
+        The Req module to use.
         """
       ]
     ]
@@ -526,9 +526,11 @@ defmodule AshJsonApiWrapper.DataLayer do
     headers = [{"Content-Type", "application/json"}, {"Accept", "application/json"}]
 
     with {:ok, %{status: status} = response} when status >= 200 and status < 300 <-
-           AshJsonApiWrapper.DataLayer.Info.tesla(resource).get(path,
-             body: body,
-             query: params,
+           Req.get(
+             AshJsonApiWrapper.DataLayer.Info.req(resource).new(),
+             url: path,
+             json: body,
+             params: params,
              headers: headers
            ),
          {:ok, body} <- Jason.decode(response.body),
@@ -724,15 +726,15 @@ defmodule AshJsonApiWrapper.DataLayer do
   end
 
   defp make_request(resource, query) do
-    # log_send(path, query)
-    # IO.inspect(query.query_params)
+    client_module = AshJsonApiWrapper.DataLayer.Info.req(resource)
 
-    AshJsonApiWrapper.DataLayer.Info.tesla(resource).get(query.path,
+    client_module.new()
+    |> Req.get(
+      url: query.path,
       body: query.body,
-      query: query.query_params
+      params: query.query_params || %{},
+      headers: query.headers || []
     )
-
-    # |> log_resp(path, query)
   end
 
   # defp log_send(request) do

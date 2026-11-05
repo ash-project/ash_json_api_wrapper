@@ -3,4 +3,13 @@
 # SPDX-License-Identifier: MIT
 
 ExUnit.start()
-Mox.defmock(AshJsonApiWrapper.MockAdapter, for: Tesla.Adapter)
+
+defmodule AshJsonApiWrapper.TestAdapter do
+  @callback run(Req.Request.t()) ::
+              {Req.Request.t(), Req.Response.t() | Exception.t()}
+end
+
+Mox.defmock(
+  AshJsonApiWrapper.MockAdapter,
+  for: AshJsonApiWrapper.TestAdapter
+)

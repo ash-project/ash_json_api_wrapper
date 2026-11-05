@@ -11,22 +11,11 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
   # Make sure mocks are verified when the test exits
   setup :verify_on_exit!
 
-  defmodule TestingTesla do
-    use Tesla
-
-    adapter(AshJsonApiWrapper.MockAdapter)
-    # plug(Tesla.Middleware.Logger)
-
-    plug(Tesla.Middleware.Retry,
-      delay: 2000,
-      max_retries: 5,
-      max_delay: 4_000,
-      should_retry: fn
-        {:ok, %{status: status}} when status in [429] -> true
-        {:ok, _} -> false
-        {:error, _} -> true
-      end
-    )
+  defmodule TestingReq do
+    def new do
+      AshJsonApiWrapper.DefaultReq.new()
+      |> Req.merge(adapter: AshJsonApiWrapper.MockAdapter)
+    end
   end
 
   # ── Custom paginator ──
@@ -81,7 +70,7 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
       validate_domain_inclusion?: false
 
     json_api_wrapper do
-      tesla(TestingTesla)
+      req(TestingReq)
 
       endpoints do
         base("https://65383945a543859d1bb1528e.mockapi.io/api/v1")
@@ -92,11 +81,21 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
           runtime_sort? true
           paginator CustomPaginator
         end
+
+        endpoint :create do
+          path("/users")
+          fields_in :body
+        end
+
+        endpoint :create_with_params do
+          path("/users")
+          fields_in :params
+        end
       end
     end
 
     actions do
-      read(:list_users) do
+      read :list_users do
         primary?(true)
 
         pagination do
@@ -104,6 +103,14 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
           required?(true)
           default_limit(50)
         end
+      end
+
+      create :create do
+        accept [:id, :name]
+      end
+
+      create :create_with_params do
+        accept [:id, :name]
       end
     end
 
@@ -132,33 +139,28 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
     Application.put_env(:ash, :validate_api_config_inclusion?, false)
 
     AshJsonApiWrapper.MockAdapter
-    |> expect(:call, 4, fn env, _options ->
-      case env.query do
-        %{"l" => 3, "p" => 2} ->
-          {:ok, %Tesla.Env{env | status: 200, body: "[]"}}
+    |> expect(:run, 4, fn request ->
+      params = URI.decode_query(request.url.query || "")
 
-        %{"l" => 3, "p" => 1} ->
-          {:ok,
-           %Tesla.Env{
-             env
-             | status: 200,
-               body: """
-               [
-                {"name": "Kendra Ernser", "id":"1"},
-                {"name": "Max Hartman", "id":"2"},
-                {"name": "John Benton", "id":"3"}
-               ]
-               """
-           }}
+      body =
+        case params do
+          %{"l" => "3", "p" => "2"} ->
+            "[]"
 
-        query ->
-          {:ok,
-           %Tesla.Env{
-             env
-             | status: 500,
-               body: "Unexpected parameters: #{query |> Kernel.inspect()}"
-           }}
-      end
+          %{"l" => "3", "p" => "1"} ->
+            """
+            [
+              {"name": "Kendra Ernser", "id": "1"},
+              {"name": "Max Hartman", "id": "2"},
+              {"name": "John Benton", "id": "3"}
+            ]
+            """
+
+          unexpected ->
+            flunk("Unexpected query parameters: #{inspect(unexpected)}")
+        end
+
+      {request, Req.Response.new(status: 200, body: body)}
     end)
 
     users =
@@ -172,9 +174,176 @@ defmodule AshJsonApiWrapper.CustomPagination.Test do
       |> Ash.Query.for_read(:list_users)
       |> Ash.read!(page: [limit: 2, offset: 1])
 
-    users_count = users.results |> Enum.count()
-    users2_count = users2.results |> Enum.count()
+    assert Enum.map(users.results, & &1.id) == [1, 2]
+    assert Enum.map(users2.results, & &1.id) == [2, 3]
+  end
 
-    assert(users_count == users2_count)
+  test "forwards custom headers to the HTTP request" do
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:run, fn request ->
+      assert Req.Request.get_header(request, "authorization") ==
+               ["Bearer test-token"]
+
+      assert Req.Request.get_header(request, "x-request-id") ==
+               ["req-migration-test"]
+
+      {request, Req.Response.new(status: 200, body: "[]")}
+    end)
+
+    page =
+      Users
+      |> Ash.Query.for_read(:list_users)
+      |> Ash.Query.set_context(%{
+        data_layer: %{
+          headers: %{
+            "authorization" => "Bearer test-token",
+            "x-request-id" => "req-migration-test"
+          }
+        }
+      })
+      |> Ash.read!(page: [limit: 2, offset: 0])
+
+    assert page.results == []
+  end
+
+  test "returns an error for an unsuccessful HTTP response" do
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:run, fn request ->
+      {request,
+       Req.Response.new(
+         status: 500,
+         body: ~s({"error":"upstream unavailable"})
+       )}
+    end)
+
+    result =
+      Users
+      |> Ash.Query.for_read(:list_users)
+      |> Ash.read(page: [limit: 2, offset: 0])
+
+    assert {:error, error} = result
+    assert Exception.message(error) =~ "Received status code 500"
+  end
+
+  test "create encodes attributes in the JSON body" do
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:run, fn request ->
+      # Preserve the existing HTTP method during this migration.
+      assert request.method == :get
+      assert request.url.path == "/api/v1/users"
+
+      assert Jason.decode!(IO.iodata_to_binary(request.body)) ==
+               %{"id" => 42, "name" => "Joe"}
+
+      assert Req.Request.get_header(request, "content-type") ==
+               ["application/json"]
+
+      {request,
+       Req.Response.new(
+         status: 200,
+         body: ~s({"id":"42","name":"Joe"})
+       )}
+    end)
+
+    user =
+      Users
+      |> Ash.Changeset.for_create(:create, %{id: 42, name: "Joe"})
+      |> Ash.create!()
+
+    assert user.id == 42
+    assert user.name == "Joe"
+  end
+
+  test "create can send attributes as query parameters" do
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:run, fn request ->
+      params = URI.decode_query(request.url.query || "")
+
+      assert params["id"] == "43"
+      assert params["name"] == "Joe"
+      assert Jason.decode!(IO.iodata_to_binary(request.body)) == %{}
+
+      {request,
+       Req.Response.new(
+         status: 200,
+         body: ~s({"id":"43","name":"Joe"})
+       )}
+    end)
+
+    user =
+      Users
+      |> Ash.Changeset.for_create(:create_with_params, %{id: 43, name: "Joe"})
+      |> Ash.create!()
+
+    assert user.id == 43
+    assert user.name == "Joe"
+  end
+
+  test "returns an error when the HTTP connection times out" do
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:run, fn request ->
+      {request, %Req.TransportError{reason: :timeout}}
+    end)
+
+    result =
+      Users
+      |> Ash.Query.for_read(:list_users)
+      |> Ash.read(page: [limit: 2, offset: 0])
+
+    assert {:error, error} = result
+    assert Exception.message(error) =~ "timeout"
+  end
+
+  test "follows HTTP redirects" do
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:run, fn request ->
+      assert request.url.path == "/api/v1/users"
+
+      {request,
+       Req.Response.new(
+         status: 302,
+         headers: [{"location", "/api/v1/redirected-users"}],
+         body: ""
+       )}
+    end)
+    |> expect(:run, fn request ->
+      assert request.url.path == "/api/v1/redirected-users"
+
+      {request, Req.Response.new(status: 200, body: "[]")}
+    end)
+
+    page =
+      Users
+      |> Ash.Query.for_read(:list_users)
+      |> Ash.read!(page: [limit: 2, offset: 0])
+
+    assert page.results == []
+  end
+
+  test "allows custom retry configuration" do
+    AshJsonApiWrapper.MockAdapter
+    |> expect(:run, fn request ->
+      {request, Req.Response.new(status: 429, body: "")}
+    end)
+    |> expect(:run, fn request ->
+      {request, Req.Response.new(status: 200, body: "[]")}
+    end)
+
+    client =
+      TestingReq.new()
+      |> Req.merge(
+        retry: fn _request, response_or_error ->
+          match?(%Req.Response{status: 429}, response_or_error)
+        end,
+        max_retries: 1,
+        retry_delay: fn _attempt -> 0 end,
+        retry_log_level: false
+      )
+
+    assert {:ok, response} =
+             Req.get(client, url: "https://example.test/users")
+
+    assert response.status == 200
+    assert response.body == "[]"
   end
 end

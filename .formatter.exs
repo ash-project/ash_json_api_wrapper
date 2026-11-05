@@ -18,8 +18,8 @@ spark_locals_without_parens = [
   limit_with: 1,
   paginator: 1,
   path: 1,
+  req: 1,
   runtime_sort?: 1,
-  tesla: 1,
   write_entity_path: 1,
   write_path: 1
 ]

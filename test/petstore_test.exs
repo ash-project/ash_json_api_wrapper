@@ -7,9 +7,10 @@ defmodule AshJsonApiWrapper.Petstore.Test do
   require Ash.Query
   @moduletag :petstore
 
-  defmodule TestingTesla do
-    use Tesla
-    # plug Tesla.Middleware.Logger
+  defmodule TestingReq do
+    def new do
+      AshJsonApiWrapper.DefaultReq.new()
+    end
   end
 
   defmodule Petstore do
@@ -19,7 +20,7 @@ defmodule AshJsonApiWrapper.Petstore.Test do
       validate_domain_inclusion?: false
 
     json_api_wrapper do
-      tesla(TestingTesla)
+      req(TestingReq)
 
       endpoints do
         base("https://petstore3.swagger.io/api/v3")

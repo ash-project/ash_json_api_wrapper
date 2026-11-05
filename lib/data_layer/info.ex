@@ -12,13 +12,13 @@ defmodule AshJsonApiWrapper.DataLayer.Info do
     Extension.get_opt(resource, [:json_api_wrapper, :endpoints], :base, nil, false)
   end
 
-  @spec tesla(map | Ash.Resource.t()) :: module | nil
-  def tesla(resource) do
+  @spec req(map | Ash.Resource.t()) :: module()
+  def req(resource) do
     Extension.get_opt(
       resource,
       [:json_api_wrapper],
-      :tesla,
-      AshJsonApiWrapper.DefaultTesla,
+      :req,
+      AshJsonApiWrapper.DefaultReq,
       false
     )
   end

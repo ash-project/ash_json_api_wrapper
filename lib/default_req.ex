@@ -2,12 +2,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-defmodule AshJsonApiWrapper.DefaultTesla do
+defmodule AshJsonApiWrapper.DefaultReq do
   @moduledoc """
-  A bare bones tesla implementation used by default if one is not provided.
+  Builds the default Req client for API requests.
   """
 
-  use Tesla
-
-  plug(Tesla.Middleware.FollowRedirects)
+  def new do
+    Req.new(
+      decode_body: false,
+      redirect: true,
+      retry: false
+    )
+  end
 end

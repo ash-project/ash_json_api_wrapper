@@ -149,9 +149,9 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
           end
         end)
 
-      tesla =
-        if main_config[:tesla] do
-          "tesla #{main_config[:tesla]}"
+      req =
+        if main_config[:req] do
+          "req #{inspect(main_config[:req])}"
         end
 
       endpoint =
@@ -165,7 +165,7 @@ defmodule AshJsonApiWrapper.OpenApi.ResourceGenerator do
           use Ash.Resource, domain: #{inspect(domain)}, data_layer: AshJsonApiWrapper.DataLayer
 
           json_api_wrapper do
-            #{tesla}
+            #{req}
 
             endpoints do
               #{endpoint}
